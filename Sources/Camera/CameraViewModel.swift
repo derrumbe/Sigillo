@@ -12,6 +12,7 @@ final class CameraViewModel: ObservableObject {
     @Published var saveConfirmation: String?
 
     let camera = CameraController()
+    let creatorStore = CreatorStore()
     private let signer: ContentCredentialSigner?
     private let signerInitError: String?
 
@@ -57,7 +58,7 @@ final class CameraViewModel: ObservableObject {
             defer { isBusy = false }
             do {
                 let jpeg = try await camera.capturePhoto()
-                let result = try signer.sign(jpegData: jpeg)
+                let result = try signer.sign(jpegData: jpeg, creator: creatorStore.creator)
                 guard let image = UIImage(data: result.signedImageData) else {
                     throw CameraError.noImageData
                 }

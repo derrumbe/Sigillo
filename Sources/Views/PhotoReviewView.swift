@@ -72,6 +72,7 @@ struct PhotoReviewView: View {
                 .font(.headline)
                 .foregroundStyle(.green)
 
+            summaryRow("Author", info.author)
             summaryRow("Produced by", info.claimGenerator)
             summaryRow("Action", info.action)
             summaryRow("Source type", info.digitalSourceType)
@@ -101,6 +102,7 @@ struct PhotoReviewView: View {
 /// Pulls a few friendly fields out of the manifest-store JSON returned by the
 /// C2PA `Reader` so we can show them without dumping raw JSON at the user.
 private struct ManifestSummary {
+    let author: String?
     let claimGenerator: String?
     let action: String?
     let digitalSourceType: String?
@@ -112,8 +114,8 @@ private struct ManifestSummary {
             let data = json.data(using: .utf8),
             let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else {
-            claimGenerator = nil; action = nil; digitalSourceType = nil
-            issuer = nil; signedAt = nil
+            author = nil; claimGenerator = nil; action = nil
+            digitalSourceType = nil; issuer = nil; signedAt = nil
             return
         }
 
@@ -135,6 +137,19 @@ private struct ManifestSummary {
         action = firstAction?["action"] as? String
         digitalSourceType = firstAction?["digitalSourceType"] as? String
             ?? firstAction?["digital_source_type"] as? String
+
+        // schema.org CreativeWork author assertion (the creator credential).
+        let creativeWork = assertions?.first {
+            ($0["label"] as? String)?.hasPrefix("stds.schema-org.CreativeWork") ?? false
+        }
+        let authors = (creativeWork?["data"] as? [String: Any])?["author"] as? [[String: Any]]
+        author = authors?.compactMap { person -> String? in
+            guard let name = person["name"] as? String else { return nil }
+            if let id = person["identifier"] as? String, !id.isEmpty {
+                return "\(name) (\(id))"
+            }
+            return name
+        }.joined(separator: ", ")
 
         let signatureInfo = active?["signature_info"] as? [String: Any]
         issuer = signatureInfo?["issuer"] as? String

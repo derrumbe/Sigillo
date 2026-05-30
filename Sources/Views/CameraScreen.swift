@@ -4,6 +4,7 @@ import SwiftUI
 /// presents the signed photo and its Content Credentials for review.
 struct CameraScreen: View {
     @StateObject private var model = CameraViewModel()
+    @State private var showSettings = false
 
     var body: some View {
         ZStack {
@@ -22,6 +23,9 @@ struct CameraScreen: View {
         .onDisappear { model.onDisappear() }
         .sheet(item: $model.captured) { photo in
             PhotoReviewView(photo: photo, model: model)
+        }
+        .sheet(isPresented: $showSettings) {
+            CreatorSettingsView(store: model.creatorStore)
         }
         .alert(
             "Something went wrong",
@@ -48,12 +52,21 @@ struct CameraScreen: View {
             .frame(height: 160)
         }
         .overlay(alignment: .top) {
-            Label("Content Credentials on", systemImage: "checkmark.seal.fill")
-                .font(.caption.weight(.semibold))
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(.ultraThinMaterial, in: Capsule())
+            CredentialBadge(store: model.creatorStore)
                 .padding(.top, 8)
+        }
+        .overlay(alignment: .topTrailing) {
+            Button {
+                showSettings = true
+            } label: {
+                Image(systemName: "person.crop.circle")
+                    .font(.title2)
+                    .foregroundStyle(.white)
+                    .padding(10)
+                    .background(.ultraThinMaterial, in: Circle())
+            }
+            .padding([.top, .trailing], 12)
+            .accessibilityLabel("Creator settings")
         }
     }
 
@@ -68,6 +81,25 @@ struct CameraScreen: View {
             .multilineTextAlignment(.center)
             .foregroundStyle(.white)
             .padding()
+    }
+}
+
+/// Top badge showing that signing is on, plus the current creator if set.
+private struct CredentialBadge: View {
+    @ObservedObject var store: CreatorStore
+
+    var body: some View {
+        Label(text, systemImage: "checkmark.seal.fill")
+            .font(.caption.weight(.semibold))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(.ultraThinMaterial, in: Capsule())
+    }
+
+    private var text: String {
+        store.creator.isEmpty
+            ? "Content Credentials on"
+            : "Signed as \(store.creator.name)"
     }
 }
 

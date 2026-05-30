@@ -21,8 +21,9 @@ JSON.
   `AVCaptureSession` and returns the photo as JPEG `Data`.
 - **Sign + embed** — [`ContentCredentialSigner`](Sources/C2PA/ContentCredentialSigner.swift)
   builds a C2PA v2 manifest with a [`c2pa.actions`](https://spec.c2pa.org/specifications/specifications/2.4/specs/C2PA_Specification.html#_actions)
-  assertion (`c2pa.created` / digital source type `digitalCapture`) and signs it
-  with the [`c2pa-ios`](https://github.com/contentauth/c2pa-ios) SDK's `Builder`.
+  assertion (`c2pa.created` / digital source type `digitalCapture`), optionally an
+  author credential (see below), and signs it with the
+  [`c2pa-ios`](https://github.com/contentauth/c2pa-ios) SDK's `Builder`.
 - **Verify** — the same SDK's `Reader` reads the manifest back out so the
   [review screen](Sources/Views/PhotoReviewView.swift) can show who signed it,
   when, and how the asset was produced.
@@ -31,6 +32,36 @@ JSON.
 
 Built on the open-source Content Authenticity tools:
 <https://opensource.contentauthenticity.org/docs/introduction/>
+
+## Author / creator credential
+
+Tap the **person icon** (top-right of the camera) to set a creator name and an
+optional identifier (profile URL or handle). When set, every photo gets a signed
+[`stds.schema-org.CreativeWork`](https://spec.c2pa.org/specifications/specifications/2.4/specs/C2PA_Specification.html#_creativework)
+assertion with a schema.org `author`:
+
+```json
+{
+  "@context": "https://schema.org",
+  "@type": "CreativeWork",
+  "author": [ { "@type": "Person", "name": "Jane Doe", "identifier": "https://janedoe.example" } ]
+}
+```
+
+Because the assertion is covered by the C2PA **claim signature**, the attribution
+is *tamper-evident* — altering the name or identifier breaks signature
+validation. Verifiers (contentcredentials.org, `c2patool`) and the in-app review
+screen surface it as the asset's author. The identity is stored locally in
+`UserDefaults` ([`Creator`](Sources/C2PA/Creator.swift)).
+
+> **Note on "verifiable":** this binds the author *into the signed claim*, which
+> is what Content Credentials uses for attribution today. It is distinct from a
+> fully *independently* verifiable creator identity — the
+> [CAWG identity assertion](https://cawg.io/identity/), which cryptographically
+> links the creator to an external identity (e.g. a W3C Verifiable Credential or
+> an X.509 identity) via a separate identity signature. That requires an identity
+> signer/credential and is a natural next step; the SDK exposes a
+> `cawgIdentity` assertion for it.
 
 ## Requirements
 
@@ -132,9 +163,11 @@ Sources/
     CameraViewModel.swift           capture → sign → review orchestration
   C2PA/
     ContentCredentialSigner.swift   builds manifest, signs, reads back  ← core
+    Creator.swift                   author identity model + persistence
   Views/
-    CameraScreen.swift              shutter UI
-    PhotoReviewView.swift           credential summary + raw manifest JSON
+    CameraScreen.swift              shutter UI + creator badge / settings entry
+    CreatorSettingsView.swift       edit the embedded author credential
+    PhotoReviewView.swift           credential summary + raw manifest JSON + Share
   Resources/                        es256_certs.pem / es256_private.key (generated)
                                     Info.plist is generated from project.yml
 ```
