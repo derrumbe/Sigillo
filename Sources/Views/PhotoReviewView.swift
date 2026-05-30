@@ -86,6 +86,10 @@ struct PhotoReviewView: View {
             summaryRow("Produced by", info.claimGenerator)
             summaryRow("Action", info.action)
             summaryRow("Source type", info.digitalSourceType)
+            summaryRow("Device", info.device)
+            summaryRow("Camera", info.cameraSummary)
+            summaryRow("Captured", info.captureTime)
+            summaryRow("Location", info.location)
             summaryRow("Signed by", info.issuer)
             summaryRow("Signed at", info.signedAt)
         }
@@ -118,6 +122,11 @@ private struct ManifestSummary {
     let digitalSourceType: String?
     let issuer: String?
     let signedAt: String?
+    // Capture metadata (from the stds.exif assertion).
+    let device: String?
+    let captureTime: String?
+    let cameraSummary: String?
+    let location: String?
 
     init(json: String) {
         guard
@@ -126,6 +135,7 @@ private struct ManifestSummary {
         else {
             author = nil; claimGenerator = nil; action = nil
             digitalSourceType = nil; issuer = nil; signedAt = nil
+            device = nil; captureTime = nil; cameraSummary = nil; location = nil
             return
         }
 
@@ -164,5 +174,32 @@ private struct ManifestSummary {
         let signatureInfo = active?["signature_info"] as? [String: Any]
         issuer = signatureInfo?["issuer"] as? String
         signedAt = signatureInfo?["time"] as? String
+
+        // EXIF capture-metadata assertion.
+        let exif = (assertions?.first { ($0["label"] as? String) == "stds.exif" }?["data"])
+            as? [String: Any]
+        func ex(_ key: String) -> String? { exif?["exif:\(key)"] as? String }
+
+        if let model = ex("Model") {
+            device = [model, ex("Software")].compactMap { $0 }.joined(separator: " · ")
+        } else {
+            device = nil
+        }
+        captureTime = ex("DateTimeOriginal")
+
+        let camera = [
+            ex("FNumber").map { "ƒ/\($0)" },
+            ex("ExposureTime").map { "\($0)s" },
+            ex("ISOSpeedRatings").map { "ISO \($0)" },
+            ex("FocalLength").map { "\($0)mm" },
+            ex("LensModel"),
+        ].compactMap { $0 }
+        cameraSummary = camera.isEmpty ? nil : camera.joined(separator: " · ")
+
+        if let lat = ex("GPSLatitude"), let lon = ex("GPSLongitude") {
+            location = "\(lat), \(lon)"
+        } else {
+            location = nil
+        }
     }
 }

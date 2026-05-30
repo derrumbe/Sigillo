@@ -24,6 +24,8 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>This app uses the camera to take photos and embed C2PA Content Credentials that record how each image was created.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Location is embedded as GPS coordinates in the photo's C2PA Content Credentials when you enable the Location metadata option.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>This app saves photos with embedded C2PA Content Credentials to your photo library.</string>
 	<key>UIApplicationSceneManifest</key>

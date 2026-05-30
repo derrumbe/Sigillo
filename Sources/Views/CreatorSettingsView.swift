@@ -6,6 +6,10 @@ struct CreatorSettingsView: View {
     @ObservedObject var store: CreatorStore
     @Environment(\.dismiss) private var dismiss
 
+    /// Called when the Location toggle is switched on, so the host can request
+    /// location permission and start updates.
+    var onLocationEnabled: () -> Void = {}
+
     @State private var name = ""
     @State private var identifier = ""
 
@@ -38,6 +42,24 @@ struct CreatorSettingsView: View {
                         + "creator credential. Requires a creator name. If identity "
                         + "signing fails on this device, the photo is still signed "
                         + "with the basic author assertion.")
+                }
+
+                Section {
+                    Toggle("Location (GPS)", isOn: $store.metadata.location)
+                    Toggle("Date & time", isOn: $store.metadata.dateTime)
+                    Toggle("Camera settings", isOn: $store.metadata.cameraSettings)
+                    Toggle("Device & iOS", isOn: $store.metadata.deviceInfo)
+                } header: {
+                    Text("Capture metadata")
+                } footer: {
+                    Text("Each enabled category is embedded in a signed stds.exif "
+                        + "assertion: GPS coordinates, capture date/time, camera "
+                        + "settings (focal length, aperture, exposure, ISO, lens), "
+                        + "and the device model + iOS version. Location requires "
+                        + "permission and is off by default.")
+                }
+                .onChange(of: store.metadata.location) { enabled in
+                    if enabled { onLocationEnabled() }
                 }
             }
             .navigationTitle("Creator")

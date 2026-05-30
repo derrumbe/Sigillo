@@ -13,6 +13,7 @@ final class CameraViewModel: ObservableObject {
 
     let camera = CameraController()
     let creatorStore = CreatorStore()
+    let locationProvider = LocationProvider()
     private let signer: ContentCredentialSigner?
     private let signerInitError: String?
 
@@ -41,7 +42,14 @@ final class CameraViewModel: ObservableObject {
 
     func onAppear() {
         camera.start()
+        if creatorStore.metadata.location { locationProvider.start() }
         if let signerInitError { errorMessage = signerInitError }
+    }
+
+    /// Begins location updates (and requests permission) — called when the user
+    /// enables the Location metadata toggle.
+    func enableLocation() {
+        locationProvider.start()
     }
 
     func onDisappear() {
@@ -62,10 +70,18 @@ final class CameraViewModel: ObservableObject {
             do {
                 let jpeg = try await camera.capturePhoto()
                 let wantsIdentity = creatorStore.bindIdentity && !creatorStore.creator.isEmpty
+
+                var metadataBuilder = CaptureMetadataBuilder(options: creatorStore.metadata)
+                let exif = metadataBuilder.build(
+                    jpeg: jpeg,
+                    location: locationProvider.currentLocation
+                )
+
                 let result = try signer.sign(
                     jpegData: jpeg,
                     creator: creatorStore.creator,
-                    bindIdentity: creatorStore.bindIdentity
+                    bindIdentity: creatorStore.bindIdentity,
+                    exif: exif
                 )
                 guard let image = UIImage(data: result.signedImageData) else {
                     throw CameraError.noImageData

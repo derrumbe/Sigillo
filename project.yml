@@ -42,6 +42,9 @@ targets:
         NSPhotoLibraryAddUsageDescription: >-
           This app saves photos with embedded C2PA Content Credentials to your
           photo library.
+        NSLocationWhenInUseUsageDescription: >-
+          Location is embedded as GPS coordinates in the photo's C2PA Content
+          Credentials when you enable the Location metadata option.
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: org.contentauth.example.C2PACamera

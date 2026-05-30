@@ -25,7 +25,9 @@ struct CameraScreen: View {
             PhotoReviewView(photo: photo, model: model)
         }
         .sheet(isPresented: $showSettings) {
-            CreatorSettingsView(store: model.creatorStore)
+            CreatorSettingsView(store: model.creatorStore) {
+                model.enableLocation()
+            }
         }
         .alert(
             "Something went wrong",

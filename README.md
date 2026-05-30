@@ -88,6 +88,32 @@ Notes:
 - Reading is enabled via `core.decode_identity_assertions = true` so verifiers
   expand the identity assertion.
 
+## Capture metadata
+
+The creator settings also let you choose, **per category at runtime**, what
+capture metadata to embed. Enabled categories are written to a signed
+[`stds.exif`](https://spec.c2pa.org/specifications/specifications/2.4/specs/C2PA_Specification.html#_exif_information)
+assertion (so the metadata is covered by the claim signature and tamper-evident):
+
+| Toggle | Embedded EXIF fields |
+|--------|----------------------|
+| **Location (GPS)** | `exif:GPSLatitude`, `exif:GPSLongitude`, `exif:GPSAltitude`, `exif:GPSTimeStamp` |
+| **Date & time**    | `exif:DateTimeOriginal`, `exif:DateTimeDigitized` |
+| **Camera settings**| `exif:FocalLength`, `FocalLengthIn35mmFilm`, `FNumber`, `ApertureValue`, `ExposureTime`, `ShutterSpeedValue`, `ExposureBiasValue`, `ISOSpeedRatings`, `WhiteBalance`, `Flash`, `LensModel`, … |
+| **Device & iOS**   | `exif:Make` (Apple), `exif:Model` (e.g. `iPhone16,2`), `exif:Software` (iOS version) |
+
+Camera settings are read from the EXIF the camera already embeds in the JPEG;
+GPS comes from CoreLocation ([`LocationProvider`](Sources/Camera/LocationProvider.swift));
+the assertion is assembled by
+[`CaptureMetadataBuilder`](Sources/Camera/CaptureMetadataBuilder.swift). Defaults:
+date/time, camera settings, and device info **on**; location **off** (it needs
+permission). The review screen shows the embedded values, and they round-trip to
+`c2patool` / contentcredentials.org.
+
+> **Privacy:** location is opt-in and only requested when you enable it. As with
+> all the metadata here, it's embedded in the signed credential and travels with
+> the photo — share accordingly.
+
 ## Requirements
 
 - macOS with **Xcode 16+** (tested with Xcode 26.5)

@@ -105,9 +105,14 @@ final class ContentCredentialSigner {
     ///     signing fails on this device, the method transparently falls back to a
     ///     basic signature so capture never breaks; the returned
     ///     ``Result/identityBound`` reports what actually happened.
-    func sign(jpegData: Data, creator: Creator = .empty, bindIdentity: Bool = false) throws -> Result {
+    func sign(
+        jpegData: Data,
+        creator: Creator = .empty,
+        bindIdentity: Bool = false,
+        exif: [String: Any]? = nil
+    ) throws -> Result {
         let format = "image/jpeg"
-        let manifest = makeManifest(format: format, creator: creator)
+        let manifest = makeManifest(format: format, creator: creator, exif: exif)
         let wantsIdentity = bindIdentity && !creator.normalized.isEmpty
 
         var identityBound = false
@@ -184,7 +189,7 @@ final class ContentCredentialSigner {
     }
 
     /// Builds the C2PA manifest describing a freshly captured photo.
-    private func makeManifest(format: String, creator: Creator) -> ManifestDefinition {
+    private func makeManifest(format: String, creator: Creator, exif: [String: Any]? = nil) -> ManifestDefinition {
         let claimGenerator = ClaimGeneratorInfo(
             operatingSystem: ClaimGeneratorInfo.operatingSystem
         )
@@ -199,6 +204,11 @@ final class ContentCredentialSigner {
         // Attribution: a signed schema.org CreativeWork author assertion.
         if let creativeWork = Self.creativeWorkData(for: creator) {
             assertions.append(.creativeWork(data: creativeWork))
+        }
+
+        // Capture metadata: EXIF (location, date/time, camera settings, device).
+        if let exif, !exif.isEmpty {
+            assertions.append(.custom(label: "stds.exif", data: AnyCodable(exif)))
         }
 
         return ManifestDefinition(
