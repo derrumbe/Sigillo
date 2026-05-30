@@ -206,19 +206,23 @@ The in-app review screen does the same check locally using the SDK's `Reader`.
 project.yml                         XcodeGen project spec (edit this)
 Makefile                            certs / project / open / clean targets
 scripts/make_test_certs.sh          generates the test ES256 cert + key
+scripts/make_app_icon.py            renders the film-noir app icon (Pillow)
 Sources/
   C2PACameraApp.swift               @main App entry point
   Camera/
     CameraController.swift          AVCaptureSession + photo capture
     CameraPreview.swift             live preview (UIViewRepresentable)
     CameraViewModel.swift           capture → sign → review orchestration
+    LocationProvider.swift          CoreLocation (GPS for metadata)
+    CaptureMetadataBuilder.swift    builds the stds.exif assertion
   C2PA/
     ContentCredentialSigner.swift   builds manifest, signs, reads back  ← core
-    Creator.swift                   author identity model + persistence
+    Creator.swift                   author identity + metadata options + storage
   Views/
     CameraScreen.swift              shutter UI + creator badge / settings entry
-    CreatorSettingsView.swift       edit the embedded author credential
+    CreatorSettingsView.swift       edit author credential + metadata toggles
     PhotoReviewView.swift           credential summary + raw manifest JSON + Share
+  Assets.xcassets/AppIcon...        film-noir camera-aperture icon (generated)
   Resources/                        es256_* (claim) + identity_* (CAWG) creds (generated)
                                     Info.plist is generated from project.yml
 ```
