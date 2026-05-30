@@ -174,6 +174,34 @@ a CA on the trust list and replace the two files. For production you should also
 keep the private key in the **Secure Enclave** rather than bundling it — the
 `c2pa-ios` SDK supports this via `SecureEnclaveSigner` / `KeychainSigner`.
 
+### Why a trusted certificate matters (what shows up in verifiers)
+
+Test certificates produce a **fully valid** credential — `c2patool` reports
+`validation_state: "Valid"`, every assertion hash matches, and even the CAWG
+identity signature validates. But because the signing cert isn't on the C2PA
+trust list, the issuer is **untrusted**, and that changes what *consumer*
+verifiers display:
+
+- **`c2patool` shows everything** regardless of trust — author, full `stds.exif`
+  (camera/GPS/device), the CAWG identity, etc. Use it as the authoritative view.
+- **[contentcredentials.org/verify](https://contentcredentials.org/verify)
+  collapses to a minimal view for untrusted provenance** — it leads with
+  "the issuer couldn't be recognized" and shows only the issuer, the claim
+  generator, and the actions. It will *not* surface the author, EXIF, location,
+  or the (untrusted) CAWG identity, even though they're present and valid. It
+  also labels "App or device used" from the **signing certificate's common
+  name**, not from `claim_generator_info`.
+
+To make the richer cards (producer/identity, location map, capture info) appear
+in consumer verifiers, sign with a certificate issued by a CA on the
+[C2PA known-certificate list](https://opensource.contentauthenticity.org/docs/verify-known-cert-list/).
+No code changes are needed — replace `Sources/Resources/es256_certs.pem` and
+`es256_private.key` (and, for the identity assertion, `identity_certs.pem` /
+`identity_private.key`) with trust-listed credentials and rebuild. With the
+bundled self-signed test certs you'll get the minimal/untrusted view no matter
+how much metadata is embedded — that's a property of the certificate, not the
+manifest.
+
 ## Getting a photo off the device with credentials intact
 
 The review screen has two export buttons:

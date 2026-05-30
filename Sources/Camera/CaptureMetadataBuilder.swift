@@ -94,12 +94,26 @@ struct CaptureMetadataBuilder {
 
     private mutating func applyLocation(_ location: CLLocation?) {
         guard let location, location.horizontalAccuracy >= 0 else { return }
-        data["exif:GPSLatitude"] = "\(location.coordinate.latitude)"
-        data["exif:GPSLongitude"] = "\(location.coordinate.longitude)"
+        let coord = location.coordinate
+        data["exif:GPSLatitude"] = Self.exifCoordinate(coord.latitude, isLatitude: true)
+        data["exif:GPSLongitude"] = Self.exifCoordinate(coord.longitude, isLatitude: false)
         if location.verticalAccuracy >= 0 {
-            data["exif:GPSAltitude"] = "\(location.altitude)"
+            // EXIF GPSAltitude is metres above sea level; GPSAltitudeRef 0 = above.
+            data["exif:GPSAltitude"] = String(format: "%.1f", location.altitude)
+            data["exif:GPSAltitudeRef"] = location.altitude < 0 ? "1" : "0"
         }
         data["exif:GPSTimeStamp"] = ISO8601DateFormatter().string(from: location.timestamp)
+    }
+
+    /// Formats a decimal-degree coordinate as the EXIF string convention
+    /// `"DDD,MM.mmmmH"` — degrees, decimal minutes, hemisphere ref (N/S/E/W) —
+    /// which map-aware C2PA viewers expect (decimal degrees aren't parsed).
+    static func exifCoordinate(_ value: Double, isLatitude: Bool) -> String {
+        let ref = isLatitude ? (value >= 0 ? "N" : "S") : (value >= 0 ? "E" : "W")
+        let magnitude = abs(value)
+        let degrees = Int(magnitude)
+        let minutes = (magnitude - Double(degrees)) * 60.0
+        return String(format: "%d,%.4f%@", degrees, minutes, ref)
     }
 
     // MARK: - Device identifier (e.g. "iPhone16,2")
