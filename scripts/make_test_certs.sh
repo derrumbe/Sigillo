@@ -1,27 +1,31 @@
 #!/usr/bin/env bash
 #
-# Generates a *development/testing* ES256 (NIST P-256) signing credential for
-# C2PA, written to Sources/Resources/ so it gets bundled into the app.
+# Generates *development/testing* ES256 (NIST P-256) credentials for C2PA,
+# written to Sources/Resources/ so they get bundled into the app.
 #
-# This produces a proper two-link chain — a root CA that issues an end-entity
-# (leaf) signing certificate — because the C2PA certificate profile / RFC 5280
-# path validation rejects a lone self-signed leaf (a cert with CA:FALSE cannot
-# be its own issuer, which surfaces in the app as
-# "Signature: the certificate is invalid").
+# Two distinct end-entity certificates are issued from a single test root CA:
 #
-#   root CA  : CA:TRUE,  keyUsage = keyCertSign, cRLSign        (self-signed)
-#   leaf     : CA:FALSE, keyUsage = digitalSignature (critical),
-#              extendedKeyUsage = emailProtection                (signed by root)
+#   1. Claim signer  -> es256_certs.pem    / es256_private.key
+#        Signs the C2PA manifest/claim.
+#   2. Creator identity -> identity_certs.pem / identity_private.key
+#        Signs the CAWG identity assertion (cawg.identity) that binds a creator
+#        identity to the author assertion. A SEPARATE key from the claim signer.
 #
-# Output:
-#   es256_certs.pem    leaf certificate followed by the root (full chain, PEM)
-#   es256_private.key  the leaf's private key (unencrypted PKCS#8 PEM)
+# Each leaf is a proper two-link chain (leaf + root). A lone self-signed leaf is
+# rejected by C2PA path validation ("the certificate is invalid"), so we always
+# chain to the root.
+#
+#   root CA : CA:TRUE,  keyUsage = keyCertSign, cRLSign        (self-signed)
+#   leaf    : CA:FALSE, keyUsage = digitalSignature (critical),
+#             extendedKeyUsage = emailProtection                (signed by root)
 #
 # Because the root is not on the C2PA trust list, verifiers (c2patool,
-# https://contentcredentials.org/verify, etc.) will report the signer as
-# "untrusted" / "unknown" — that is expected for test credentials. The signature
-# itself is cryptographically valid and the manifest is well-formed. For a
-# trusted credential, obtain a certificate from a CA on the C2PA trust list.
+# https://contentcredentials.org/verify, etc.) will report the signers as
+# "untrusted" / "unknown" — expected for test credentials. The signatures are
+# cryptographically valid and the manifest is well-formed. For trusted
+# credentials, obtain certificates from a CA on the C2PA trust list. In a real
+# deployment the creator identity certificate would be issued to the actual
+# creator (its subject would identify them), not minted locally.
 #
 # Usage:  ./scripts/make_test_certs.sh
 set -euo pipefail
@@ -30,15 +34,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OUT_DIR="${SCRIPT_DIR}/../Sources/Resources"
 mkdir -p "${OUT_DIR}"
 
-KEY="${OUT_DIR}/es256_private.key"
-CERT="${OUT_DIR}/es256_certs.pem"
-
 WORK="$(mktemp -d)"
 trap 'rm -rf "${WORK}"' EXIT
 
-# ---------------------------------------------------------------------------
-# Leaf extension config (applied by `openssl x509 -req` via -extfile)
-# ---------------------------------------------------------------------------
+# Leaf extension config (applied by `openssl x509 -req` via -extfile).
 cat > "${WORK}/leaf.cnf" <<'EOF'
 basicConstraints       = critical, CA:FALSE
 keyUsage               = critical, digitalSignature
@@ -48,7 +47,7 @@ authorityKeyIdentifier = keyid,issuer
 EOF
 
 # ---------------------------------------------------------------------------
-# 1. Root CA: EC P-256 key + self-signed CA certificate.
+# Root CA: EC P-256 key + self-signed CA certificate.
 # ---------------------------------------------------------------------------
 openssl ecparam -name prime256v1 -genkey -noout -out "${WORK}/root.key" 2>/dev/null
 openssl req -new -x509 -sha256 -days 3650 \
@@ -60,31 +59,38 @@ openssl req -new -x509 -sha256 -days 3650 \
   -addext "subjectKeyIdentifier=hash"
 
 # ---------------------------------------------------------------------------
-# 2. Leaf signing cert: EC P-256 key + CSR, signed by the root CA.
+# issue_leaf <name> <subjectCN> <cert-out> <key-out>
+#   Mints an EC P-256 leaf signed by the root CA and writes the full chain
+#   (leaf + root) and the PKCS#8 private key.
 # ---------------------------------------------------------------------------
-openssl ecparam -name prime256v1 -genkey -noout -out "${WORK}/leaf.key" 2>/dev/null
-openssl req -new -sha256 \
-  -key "${WORK}/leaf.key" \
-  -out "${WORK}/leaf.csr" \
-  -subj "/CN=C2PA Camera Test Signer/O=Content Authenticity Example/C=US"
-
-openssl x509 -req -sha256 -days 3650 \
-  -in "${WORK}/leaf.csr" \
-  -CA "${WORK}/root.crt" -CAkey "${WORK}/root.key" -CAcreateserial \
-  -out "${WORK}/leaf.crt" \
-  -extfile "${WORK}/leaf.cnf"
+issue_leaf() {
+  local name="$1" cn="$2" cert_out="$3" key_out="$4"
+  openssl ecparam -name prime256v1 -genkey -noout -out "${WORK}/${name}.key" 2>/dev/null
+  openssl req -new -sha256 \
+    -key "${WORK}/${name}.key" \
+    -out "${WORK}/${name}.csr" \
+    -subj "/CN=${cn}/O=Content Authenticity Example/C=US"
+  openssl x509 -req -sha256 -days 3650 \
+    -in "${WORK}/${name}.csr" \
+    -CA "${WORK}/root.crt" -CAkey "${WORK}/root.key" -CAcreateserial \
+    -out "${WORK}/${name}.crt" \
+    -extfile "${WORK}/leaf.cnf"
+  openssl verify -CAfile "${WORK}/root.crt" "${WORK}/${name}.crt" >/dev/null
+  cat "${WORK}/${name}.crt" "${WORK}/root.crt" > "${cert_out}"
+  openssl pkcs8 -topk8 -nocrypt -in "${WORK}/${name}.key" -out "${key_out}"
+}
 
 # ---------------------------------------------------------------------------
-# 3. Assemble outputs: full chain (leaf first) + leaf key as PKCS#8.
+# Two distinct leaves from the same root.
 # ---------------------------------------------------------------------------
-cat "${WORK}/leaf.crt" "${WORK}/root.crt" > "${CERT}"
-openssl pkcs8 -topk8 -nocrypt -in "${WORK}/leaf.key" -out "${KEY}"
+issue_leaf "claim" "C2PA Camera Test Signer" \
+  "${OUT_DIR}/es256_certs.pem" "${OUT_DIR}/es256_private.key"
 
-# Sanity check: the chain must verify.
-openssl verify -CAfile "${WORK}/root.crt" "${WORK}/leaf.crt" >/dev/null
+issue_leaf "identity" "C2PA Camera Creator Identity" \
+  "${OUT_DIR}/identity_certs.pem" "${OUT_DIR}/identity_private.key"
 
 echo "Wrote:"
-echo "  ${CERT}    (leaf + root chain)"
-echo "  ${KEY}    (leaf private key)"
+echo "  ${OUT_DIR}/es256_certs.pem      + es256_private.key      (claim signer)"
+echo "  ${OUT_DIR}/identity_certs.pem   + identity_private.key   (creator identity)"
 echo
-echo "These are TEST credentials. Verifiers will mark the signer as untrusted."
+echo "These are TEST credentials. Verifiers will mark the signers as untrusted."

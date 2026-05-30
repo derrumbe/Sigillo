@@ -9,6 +9,8 @@ DerivedData/
 # Generated test signing credentials (regenerate with `make certs`)
 Sources/Resources/es256_certs.pem
 Sources/Resources/es256_private.key
+Sources/Resources/identity_certs.pem
+Sources/Resources/identity_private.key
 
 # macOS
 .DS_Store

@@ -77,11 +77,14 @@ Notes:
 - It's **opt-in** and **degrades gracefully** — if CAWG signing fails on a given
   device, the photo is still signed with the basic author assertion, and the
   review screen says so. (Verify it works on your device before relying on it.)
-- For the demo, the **same test credential signs both** the claim and the
-  identity assertion (mirroring the SDK's own CAWG fixture). A real deployment
-  would use a *distinct* identity certificate — or the CAWG
-  *identity claims aggregation* flavor backed by a W3C Verifiable Credential —
-  for the `cawg_x509_signer`.
+- The claim and the identity assertion are signed by **distinct credentials**:
+  the claim signer uses `es256_certs.pem` / `es256_private.key`, while the
+  `cawg_x509_signer` uses a separate `identity_certs.pem` / `identity_private.key`
+  (subject `CN=C2PA Camera Creator Identity`), both issued by the same test root.
+  In a real deployment the identity certificate would be issued to the actual
+  creator (its subject identifying them) — or you'd use the CAWG *identity claims
+  aggregation* flavor backed by a W3C Verifiable Credential. If the identity
+  files are absent, the signer falls back to reusing the claim credential.
 - Reading is enabled via `core.decode_identity_assertions = true` so verifiers
   expand the identity assertion.
 
@@ -117,14 +120,14 @@ Then in Xcode:
 ## Signing credentials
 
 `make certs` runs [`scripts/make_test_certs.sh`](scripts/make_test_certs.sh),
-which generates a two-link **ES256 (P-256)** chain — a root CA that issues a leaf
-signing certificate — plus the leaf's PKCS#8 private key, into
-`Sources/Resources/`:
+which mints a test root CA and issues **two distinct ES256 (P-256) leaves** from
+it — one for the claim signer and one for the creator identity — each as a
+full chain (leaf + root) plus its PKCS#8 private key, into `Sources/Resources/`:
 
 | File | Purpose |
 |------|---------|
-| `es256_certs.pem`   | Leaf certificate **followed by the root** (full chain, PEM) |
-| `es256_private.key` | The leaf's private key (PEM) |
+| `es256_certs.pem` / `es256_private.key`       | Claim signer (signs the C2PA manifest) |
+| `identity_certs.pem` / `identity_private.key` | Creator identity (signs the CAWG `cawg.identity` assertion) |
 
 The leaf carries the extensions the C2PA certificate profile expects of an
 end-entity signer (`keyUsage = digitalSignature` critical,
@@ -190,7 +193,7 @@ Sources/
     CameraScreen.swift              shutter UI + creator badge / settings entry
     CreatorSettingsView.swift       edit the embedded author credential
     PhotoReviewView.swift           credential summary + raw manifest JSON + Share
-  Resources/                        es256_certs.pem / es256_private.key (generated)
+  Resources/                        es256_* (claim) + identity_* (CAWG) creds (generated)
                                     Info.plist is generated from project.yml
 ```
 

@@ -42,6 +42,10 @@ final class ContentCredentialSigner {
 
     private let certPEM: String
     private let keyPEM: String
+    /// Separate credential for the CAWG identity signer. Falls back to the claim
+    /// credential if a dedicated identity cert/key isn't bundled.
+    private let identityCertPEM: String
+    private let identityKeyPEM: String
     private let signerInfo: SignerInfo
 
     private static let tsaURL = "http://timestamp.digicert.com"
@@ -62,6 +66,20 @@ final class ContentCredentialSigner {
         }
         self.certPEM = certPEM
         self.keyPEM = keyPEM
+
+        // Dedicated creator-identity credential for the CAWG signer; reuse the
+        // claim credential if a distinct one isn't present.
+        if let idCertURL = Bundle.main.url(forResource: "identity_certs", withExtension: "pem"),
+           let idKeyURL = Bundle.main.url(forResource: "identity_private", withExtension: "key"),
+           let idCert = try? String(contentsOf: idCertURL, encoding: .utf8),
+           let idKey = try? String(contentsOf: idKeyURL, encoding: .utf8),
+           !idCert.isEmpty, !idKey.isEmpty {
+            self.identityCertPEM = idCert
+            self.identityKeyPEM = idKey
+        } else {
+            self.identityCertPEM = certPEM
+            self.identityKeyPEM = keyPEM
+        }
 
         // A timestamp authority records *when* the asset was signed. DigiCert's
         // public RFC 3161 TSA is used here for convenience.
@@ -148,21 +166,19 @@ final class ContentCredentialSigner {
     /// X.509 identity to the attribution. The same test credential is reused for
     /// both signers (matching the SDK's own CAWG fixture).
     private func cawgSettingsTOML() -> String {
-        let cert = certPEM.trimmingCharacters(in: .whitespacesAndNewlines)
-        let key = keyPEM.trimmingCharacters(in: .whitespacesAndNewlines)
-        let block: (String) -> [String] = { section in
+        let block: (String, String, String) -> [String] = { section, cert, key in
             [
                 "[\(section).local]",
                 "alg = \"es256\"",
-                "sign_cert = \"\"\"", cert, "\"\"\"",
-                "private_key = \"\"\"", key, "\"\"\"",
+                "sign_cert = \"\"\"", cert.trimmingCharacters(in: .whitespacesAndNewlines), "\"\"\"",
+                "private_key = \"\"\"", key.trimmingCharacters(in: .whitespacesAndNewlines), "\"\"\"",
                 "tsa_url = \"\(Self.tsaURL)\"",
             ]
         }
         var lines = ["version = 1", "", "[core]", "decode_identity_assertions = true", ""]
-        lines += block("signer")
+        lines += block("signer", certPEM, keyPEM)                       // claim signer
         lines += [""]
-        lines += block("cawg_x509_signer")
+        lines += block("cawg_x509_signer", identityCertPEM, identityKeyPEM)  // creator identity
         lines += ["referenced_assertions = [\"\(StandardAssertionLabel.creativeWork.rawValue)\"]"]
         return lines.joined(separator: "\n")
     }
