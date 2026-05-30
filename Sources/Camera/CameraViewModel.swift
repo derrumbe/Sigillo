@@ -24,6 +24,9 @@ final class CameraViewModel: ObservableObject {
         /// On-disk copy of the signed JPEG, used for Share/AirDrop so the exact
         /// signed bytes (with the embedded manifest) are transferred unchanged.
         let fileURL: URL
+        /// Whether a CAWG identity credential was requested, and whether it bound.
+        let identityRequested: Bool
+        let identityBound: Bool
     }
 
     init() {
@@ -58,7 +61,12 @@ final class CameraViewModel: ObservableObject {
             defer { isBusy = false }
             do {
                 let jpeg = try await camera.capturePhoto()
-                let result = try signer.sign(jpegData: jpeg, creator: creatorStore.creator)
+                let wantsIdentity = creatorStore.bindIdentity && !creatorStore.creator.isEmpty
+                let result = try signer.sign(
+                    jpegData: jpeg,
+                    creator: creatorStore.creator,
+                    bindIdentity: creatorStore.bindIdentity
+                )
                 guard let image = UIImage(data: result.signedImageData) else {
                     throw CameraError.noImageData
                 }
@@ -68,7 +76,9 @@ final class CameraViewModel: ObservableObject {
                     image: image,
                     signedData: result.signedImageData,
                     manifestJSON: result.manifestJSON,
-                    fileURL: fileURL
+                    fileURL: fileURL,
+                    identityRequested: wantsIdentity,
+                    identityBound: result.identityBound
                 )
             } catch {
                 errorMessage = error.localizedDescription

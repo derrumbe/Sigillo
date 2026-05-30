@@ -54,14 +54,36 @@ validation. Verifiers (contentcredentials.org, `c2patool`) and the in-app review
 screen surface it as the asset's author. The identity is stored locally in
 `UserDefaults` ([`Creator`](Sources/C2PA/Creator.swift)).
 
-> **Note on "verifiable":** this binds the author *into the signed claim*, which
-> is what Content Credentials uses for attribution today. It is distinct from a
-> fully *independently* verifiable creator identity — the
-> [CAWG identity assertion](https://cawg.io/identity/), which cryptographically
-> links the creator to an external identity (e.g. a W3C Verifiable Credential or
-> an X.509 identity) via a separate identity signature. That requires an identity
-> signer/credential and is a natural next step; the SDK exposes a
-> `cawgIdentity` assertion for it.
+### Verifiable identity (CAWG)
+
+The `CreativeWork` author above is bound into the C2PA claim, but it's just a
+*name* — it doesn't prove the creator is who they say. For a genuinely
+verifiable creator identity, enable **Bind verifiable identity (CAWG)** in the
+creator settings. Each photo then also gets a
+[CAWG identity assertion](https://cawg.io/identity/) (`cawg.identity`): a
+separate identity signature, made with an X.509 identity certificate, over the
+author assertion. This is the C2PA-native "verifiable credential for the
+creator" — a verifier can independently check the identity signature and the
+certificate behind it, not just read a name.
+
+Implementation ([`ContentCredentialSigner.cawgSettingsTOML`](Sources/C2PA/ContentCredentialSigner.swift)):
+the SDK's settings-based signer ([`Signer(settingsTOML:)`](https://github.com/contentauth/c2pa-ios))
+is configured with both a `[signer.local]` (claim signer) and a
+`[cawg_x509_signer.local]` whose `referenced_assertions` points at the
+`stds.schema-org.CreativeWork` author assertion.
+
+Notes:
+
+- It's **opt-in** and **degrades gracefully** — if CAWG signing fails on a given
+  device, the photo is still signed with the basic author assertion, and the
+  review screen says so. (Verify it works on your device before relying on it.)
+- For the demo, the **same test credential signs both** the claim and the
+  identity assertion (mirroring the SDK's own CAWG fixture). A real deployment
+  would use a *distinct* identity certificate — or the CAWG
+  *identity claims aggregation* flavor backed by a W3C Verifiable Credential —
+  for the `cawg_x509_signer`.
+- Reading is enabled via `core.decode_identity_assertions = true` so verifiers
+  expand the identity assertion.
 
 ## Requirements
 

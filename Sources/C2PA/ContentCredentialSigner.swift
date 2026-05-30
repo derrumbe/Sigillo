@@ -21,6 +21,8 @@ final class ContentCredentialSigner {
     struct Result {
         let signedImageData: Data
         let manifestJSON: String
+        /// True if a CAWG X.509 identity assertion was successfully bound.
+        let identityBound: Bool
     }
 
     enum SignerError: LocalizedError {
@@ -38,7 +40,11 @@ final class ContentCredentialSigner {
         }
     }
 
+    private let certPEM: String
+    private let keyPEM: String
     private let signerInfo: SignerInfo
+
+    private static let tsaURL = "http://timestamp.digicert.com"
 
     /// Loads the bundled PEM certificate chain and private key.
     init() throws {
@@ -54,6 +60,8 @@ final class ContentCredentialSigner {
         guard !certPEM.isEmpty, !keyPEM.isEmpty else {
             throw SignerError.emptyCredentials
         }
+        self.certPEM = certPEM
+        self.keyPEM = keyPEM
 
         // A timestamp authority records *when* the asset was signed. DigiCert's
         // public RFC 3161 TSA is used here for convenience.
@@ -61,7 +69,7 @@ final class ContentCredentialSigner {
             algorithm: .es256,
             certificatePEM: certPEM,
             privateKeyPEM: keyPEM,
-            tsa: URL(string: "http://timestamp.digicert.com")
+            tsa: URL(string: Self.tsaURL)
         )
     }
 
@@ -70,14 +78,53 @@ final class ContentCredentialSigner {
     /// Signs the given JPEG data, embedding Content Credentials, and returns the
     /// signed asset together with the manifest read back from it.
     ///
-    /// - Parameter creator: optional author identity. When non-empty it is added
-    ///   to the manifest as a signed schema.org `CreativeWork` author assertion.
-    func sign(jpegData: Data, creator: Creator = .empty) throws -> Result {
+    /// - Parameters:
+    ///   - creator: optional author identity. When non-empty it is added to the
+    ///     manifest as a signed schema.org `CreativeWork` author assertion.
+    ///   - bindIdentity: when `true` *and* a creator is set, also bind a CAWG
+    ///     X.509 identity assertion (`cawg.identity`) that cryptographically ties
+    ///     the creator's identity certificate to the author assertion. If CAWG
+    ///     signing fails on this device, the method transparently falls back to a
+    ///     basic signature so capture never breaks; the returned
+    ///     ``Result/identityBound`` reports what actually happened.
+    func sign(jpegData: Data, creator: Creator = .empty, bindIdentity: Bool = false) throws -> Result {
         let format = "image/jpeg"
         let manifest = makeManifest(format: format, creator: creator)
+        let wantsIdentity = bindIdentity && !creator.normalized.isEmpty
 
-        // c2pa-ios writes to a destination stream backed by a real file, so we
-        // stage the signed asset in the caches directory before reading it back.
+        var identityBound = false
+        let signedData: Data
+
+        if wantsIdentity, let cawgSigner = try? Signer(settingsTOML: cawgSettingsTOML()),
+           let data = try? performSign(jpegData, manifest: manifest, format: format, signer: cawgSigner) {
+            signedData = data
+            identityBound = true
+        } else {
+            // Basic path (or CAWG fall-back): explicit PEM signer.
+            signedData = try performSign(
+                jpegData, manifest: manifest, format: format,
+                signer: try Signer(info: signerInfo)
+            )
+        }
+
+        let manifestJSON = (try? readManifest(from: signedData, format: format)) ?? "{}"
+        return Result(
+            signedImageData: signedData,
+            manifestJSON: manifestJSON,
+            identityBound: identityBound
+        )
+    }
+
+    /// Runs one Builder sign pass with the given signer and returns the bytes.
+    ///
+    /// c2pa-ios writes to a destination stream backed by a real file, so we stage
+    /// the signed asset in the caches directory before reading it back.
+    private func performSign(
+        _ jpegData: Data,
+        manifest: ManifestDefinition,
+        format: String,
+        signer: Signer
+    ) throws -> Data {
         let outputURL = FileManager.default
             .urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent(UUID().uuidString)
@@ -86,19 +133,38 @@ final class ContentCredentialSigner {
         defer { try? FileManager.default.removeItem(at: outputURL) }
 
         let builder = try Builder(manifest: manifest)
-        let signer = try Signer(info: signerInfo)
-
         try builder.sign(
             format: format,
             source: try Stream(data: jpegData),
             destination: try Stream(writeTo: outputURL),
             signer: signer
         )
+        return try Data(contentsOf: outputURL, options: .uncached)
+    }
 
-        let signedData = try Data(contentsOf: outputURL, options: .uncached)
-        let manifestJSON = (try? readManifest(from: signedData, format: format)) ?? "{}"
-
-        return Result(signedImageData: signedData, manifestJSON: manifestJSON)
+    /// Builds a c2pa-rs settings document (TOML) that configures both the main
+    /// claim signer and a CAWG X.509 identity signer. The identity signature
+    /// references the `CreativeWork` author assertion, binding the creator's
+    /// X.509 identity to the attribution. The same test credential is reused for
+    /// both signers (matching the SDK's own CAWG fixture).
+    private func cawgSettingsTOML() -> String {
+        let cert = certPEM.trimmingCharacters(in: .whitespacesAndNewlines)
+        let key = keyPEM.trimmingCharacters(in: .whitespacesAndNewlines)
+        let block: (String) -> [String] = { section in
+            [
+                "[\(section).local]",
+                "alg = \"es256\"",
+                "sign_cert = \"\"\"", cert, "\"\"\"",
+                "private_key = \"\"\"", key, "\"\"\"",
+                "tsa_url = \"\(Self.tsaURL)\"",
+            ]
+        }
+        var lines = ["version = 1", "", "[core]", "decode_identity_assertions = true", ""]
+        lines += block("signer")
+        lines += [""]
+        lines += block("cawg_x509_signer")
+        lines += ["referenced_assertions = [\"\(StandardAssertionLabel.creativeWork.rawValue)\"]"]
+        return lines.joined(separator: "\n")
     }
 
     /// Builds the C2PA manifest describing a freshly captured photo.

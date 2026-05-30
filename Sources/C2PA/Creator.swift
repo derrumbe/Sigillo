@@ -34,7 +34,15 @@ final class CreatorStore: ObservableObject {
         didSet { persist() }
     }
 
+    /// When enabled, photos also get a CAWG X.509 identity assertion binding the
+    /// creator's identity certificate to the author assertion (a "verifiable
+    /// credential" in the C2PA/CAWG sense).
+    @Published var bindIdentity: Bool {
+        didSet { defaults.set(bindIdentity, forKey: identityKey) }
+    }
+
     private let key = "creator.v1"
+    private let identityKey = "creator.bindIdentity.v1"
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
@@ -45,6 +53,7 @@ final class CreatorStore: ObservableObject {
         } else {
             creator = .empty
         }
+        bindIdentity = defaults.bool(forKey: identityKey)
     }
 
     private func persist() {

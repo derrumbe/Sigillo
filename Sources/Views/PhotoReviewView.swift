@@ -72,6 +72,16 @@ struct PhotoReviewView: View {
                 .font(.headline)
                 .foregroundStyle(.green)
 
+            if photo.identityBound {
+                Label("Verifiable identity bound (CAWG X.509)", systemImage: "person.badge.shield.checkmark")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.green)
+            } else if photo.identityRequested {
+                Label("Identity not bound — basic author only", systemImage: "exclamationmark.triangle.fill")
+                    .font(.footnote)
+                    .foregroundStyle(.orange)
+            }
+
             summaryRow("Author", info.author)
             summaryRow("Produced by", info.claimGenerator)
             summaryRow("Action", info.action)

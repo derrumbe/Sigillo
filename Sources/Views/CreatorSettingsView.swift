@@ -27,6 +27,18 @@ struct CreatorSettingsView: View {
                         + "the C2PA claim signature, the attribution is "
                         + "tamper-evident. Leave the name blank to omit it.")
                 }
+
+                Section {
+                    Toggle("Bind verifiable identity (CAWG)", isOn: $store.bindIdentity)
+                        .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                } footer: {
+                    Text("Adds a CAWG X.509 identity assertion (cawg.identity) that "
+                        + "cryptographically binds an identity certificate to the "
+                        + "author assertion — the C2PA way to attach a verifiable "
+                        + "creator credential. Requires a creator name. If identity "
+                        + "signing fails on this device, the photo is still signed "
+                        + "with the basic author assertion.")
+                }
             }
             .navigationTitle("Creator")
             .navigationBarTitleDisplayMode(.inline)
