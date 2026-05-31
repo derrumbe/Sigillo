@@ -1,9 +1,9 @@
 import SwiftUI
 
-/// Shows the freshly captured photo, a human-readable summary of its embedded
-/// Content Credentials, and the raw manifest JSON for inspection.
+/// Shows the freshly captured photo/video, a human-readable summary of its
+/// embedded Content Credentials, and the raw manifest JSON for inspection.
 struct PhotoReviewView: View {
-    let photo: CameraViewModel.CapturedPhoto
+    let item: CameraViewModel.CapturedItem
     @ObservedObject var model: CameraViewModel
 
     @State private var showRawJSON = false
@@ -12,10 +12,7 @@ struct PhotoReviewView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
-                    Image(uiImage: photo.image)
-                        .resizable()
-                        .scaledToFit()
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                    preview
 
                     credentialSummary
 
@@ -26,7 +23,7 @@ struct PhotoReviewView: View {
                     }
 
                     DisclosureGroup("Raw manifest JSON", isExpanded: $showRawJSON) {
-                        Text(photo.manifestJSON)
+                        Text(item.manifestJSON)
                             .font(.system(.caption2, design: .monospaced))
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .textSelection(.enabled)
@@ -47,10 +44,7 @@ struct PhotoReviewView: View {
                 // unlike exporting the "original" from the Photos app, which can
                 // re-encode and strip the manifest.
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    ShareLink(
-                        item: photo.fileURL,
-                        preview: SharePreview("C2PA Photo", image: Image(uiImage: photo.image))
-                    ) {
+                    ShareLink(item: item.fileURL) {
                         Label("Share", systemImage: "square.and.arrow.up")
                     }
                 }
@@ -65,18 +59,43 @@ struct PhotoReviewView: View {
         }
     }
 
+    @ViewBuilder
+    private var preview: some View {
+        ZStack(alignment: .bottomTrailing) {
+            if let image = item.image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+            } else {
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(.gray.opacity(0.3))
+                    .frame(height: 220)
+                    .overlay(Image(systemName: "video.fill").font(.largeTitle).foregroundStyle(.white))
+            }
+            if item.kind == .video {
+                Label("Video", systemImage: "video.fill")
+                    .font(.caption2.weight(.bold))
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .background(.black.opacity(0.6), in: Capsule())
+                    .foregroundStyle(.white)
+                    .padding(10)
+            }
+        }
+    }
+
     private var credentialSummary: some View {
-        let info = ManifestSummary(json: photo.manifestJSON)
+        let info = ManifestSummary(json: item.manifestJSON)
         return VStack(alignment: .leading, spacing: 10) {
             Label("Signed Content Credential embedded", systemImage: "checkmark.seal.fill")
                 .font(.headline)
                 .foregroundStyle(.green)
 
-            if photo.identityBound {
+            if item.identityBound {
                 Label("Verifiable identity bound (CAWG X.509)", systemImage: "person.badge.shield.checkmark")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.green)
-            } else if photo.identityRequested {
+            } else if item.identityRequested {
                 Label("Identity not bound — basic author only", systemImage: "exclamationmark.triangle.fill")
                     .font(.footnote)
                     .foregroundStyle(.orange)

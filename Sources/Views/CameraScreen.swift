@@ -1,10 +1,12 @@
 import SwiftUI
 
-/// Root screen: live camera preview with a shutter button. After capture it
-/// presents the signed photo and its Content Credentials for review.
+/// Root screen: live preview with the full control set (mode, zoom, flash,
+/// exposure, night mode, aspect, timer, Live Photos), then a signed-credential
+/// review of each capture.
 struct CameraScreen: View {
     @StateObject private var model = CameraViewModel()
     @State private var showSettings = false
+    @State private var pinchBase: CGFloat = 1
 
     var body: some View {
         ZStack {
@@ -12,22 +14,25 @@ struct CameraScreen: View {
 
             switch model.camera.status {
             case .unauthorized:
-                permissionDenied
+                message("Camera access is required.\nEnable it in Settings → Privacy → Camera.")
             case .failed:
                 message("Camera unavailable on this device.")
             default:
                 cameraUI
             }
+
+            if let value = model.countdown {
+                CountdownOverlay(value: value)
+            }
         }
+        .animation(.easeInOut(duration: 0.2), value: model.countdown)
         .onAppear { model.onAppear() }
         .onDisappear { model.onDisappear() }
-        .sheet(item: $model.captured) { photo in
-            PhotoReviewView(photo: photo, model: model)
+        .sheet(item: $model.captured) { item in
+            PhotoReviewView(item: item, model: model)
         }
         .sheet(isPresented: $showSettings) {
-            CreatorSettingsView(store: model.creatorStore) {
-                model.enableLocation()
-            }
+            CreatorSettingsView(store: model.creatorStore) { model.enableLocation() }
         }
         .alert(
             "Something went wrong",
@@ -44,38 +49,37 @@ struct CameraScreen: View {
 
     private var cameraUI: some View {
         VStack(spacing: 0) {
-            CameraPreview(session: model.camera.session)
-                .ignoresSafeArea(edges: .top)
+            CameraTopControls(camera: model.camera, showSettings: $showSettings)
 
             ZStack {
-                Color.black
-                ShutterButton(isBusy: model.isBusy) { model.capture() }
+                CameraPreview(session: model.camera.session)
+                    .gesture(
+                        MagnificationGesture()
+                            .onChanged { scale in model.camera.setZoom(pinchBase * scale) }
+                            .onEnded { _ in pinchBase = model.camera.zoomFactor }
+                    )
+
+                VStack {
+                    Label(badgeText, systemImage: "checkmark.seal.fill")
+                        .font(.caption.weight(.semibold))
+                        .padding(.horizontal, 12).padding(.vertical, 6)
+                        .background(.ultraThinMaterial, in: Capsule())
+                        .padding(.top, 8)
+                    Spacer()
+                    ExposureSlider(camera: model.camera)
+                    ZoomControls(camera: model.camera)
+                        .padding(.bottom, 12)
+                }
             }
-            .frame(height: 160)
-        }
-        .overlay(alignment: .top) {
-            CredentialBadge(store: model.creatorStore)
-                .padding(.top, 8)
-        }
-        .overlay(alignment: .topTrailing) {
-            Button {
-                showSettings = true
-            } label: {
-                Image(systemName: "person.crop.circle")
-                    .font(.title2)
-                    .foregroundStyle(.white)
-                    .padding(10)
-                    .background(.ultraThinMaterial, in: Circle())
-            }
-            .padding([.top, .trailing], 12)
-            .accessibilityLabel("Creator settings")
+            .clipped()
+
+            CaptureBar(camera: model.camera, isBusy: model.isBusy) { model.shutter() }
         }
     }
 
-    private var permissionDenied: some View {
-        message(
-            "Camera access is required.\nEnable it in Settings → Privacy → Camera."
-        )
+    private var badgeText: String {
+        let creator = model.creatorStore.creator
+        return creator.isEmpty ? "Content Credentials on" : "Signed as \(creator.name)"
     }
 
     private func message(_ text: String) -> some View {
@@ -83,46 +87,5 @@ struct CameraScreen: View {
             .multilineTextAlignment(.center)
             .foregroundStyle(.white)
             .padding()
-    }
-}
-
-/// Top badge showing that signing is on, plus the current creator if set.
-private struct CredentialBadge: View {
-    @ObservedObject var store: CreatorStore
-
-    var body: some View {
-        Label(text, systemImage: "checkmark.seal.fill")
-            .font(.caption.weight(.semibold))
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(.ultraThinMaterial, in: Capsule())
-    }
-
-    private var text: String {
-        store.creator.isEmpty
-            ? "Content Credentials on"
-            : "Signed as \(store.creator.name)"
-    }
-}
-
-/// The circular shutter button, showing a spinner while capture/signing runs.
-private struct ShutterButton: View {
-    let isBusy: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            ZStack {
-                Circle()
-                    .strokeBorder(.white, lineWidth: 4)
-                    .frame(width: 74, height: 74)
-                if isBusy {
-                    ProgressView().tint(.white)
-                } else {
-                    Circle().fill(.white).frame(width: 60, height: 60)
-                }
-            }
-        }
-        .disabled(isBusy)
     }
 }

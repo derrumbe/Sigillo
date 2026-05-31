@@ -17,11 +17,18 @@ import C2PA
 @MainActor
 final class ContentCredentialSigner {
 
-    /// Result of signing: the new asset bytes plus the manifest read back from them.
+    /// Result of signing a still: the new asset bytes plus the manifest read back.
     struct Result {
         let signedImageData: Data
         let manifestJSON: String
         /// True if a CAWG X.509 identity assertion was successfully bound.
+        let identityBound: Bool
+    }
+
+    /// Result of signing a video: the signed file URL plus the manifest read back.
+    struct VideoResult {
+        let signedVideoURL: URL
+        let manifestJSON: String
         let identityBound: Bool
     }
 
@@ -116,53 +123,89 @@ final class ContentCredentialSigner {
         let wantsIdentity = bindIdentity && !creator.normalized.isEmpty
 
         var identityBound = false
-        let signedData: Data
+        var signedData: Data?
 
-        if wantsIdentity, let cawgSigner = try? Signer(settingsTOML: cawgSettingsTOML()),
-           let data = try? performSign(jpegData, manifest: manifest, format: format, signer: cawgSigner) {
-            signedData = data
-            identityBound = true
-        } else {
-            // Basic path (or CAWG fall-back): explicit PEM signer.
-            signedData = try performSign(
-                jpegData, manifest: manifest, format: format,
-                signer: try Signer(info: signerInfo)
-            )
+        if wantsIdentity, let cawg = try? Signer(settingsTOML: cawgSettingsTOML()) {
+            signedData = try? signDataOnce(manifest, format: format, source: jpegData, signer: cawg)
+            identityBound = signedData != nil
         }
-
-        let manifestJSON = (try? readManifest(from: signedData, format: format)) ?? "{}"
-        return Result(
-            signedImageData: signedData,
-            manifestJSON: manifestJSON,
-            identityBound: identityBound
+        let data = try signedData ?? signDataOnce(
+            manifest, format: format, source: jpegData, signer: try Signer(info: signerInfo)
         )
+
+        let manifestJSON = (try? readManifest(from: data, format: format)) ?? "{}"
+        return Result(signedImageData: data, manifestJSON: manifestJSON, identityBound: identityBound)
     }
 
-    /// Runs one Builder sign pass with the given signer and returns the bytes.
-    ///
-    /// c2pa-ios writes to a destination stream backed by a real file, so we stage
-    /// the signed asset in the caches directory before reading it back.
-    private func performSign(
-        _ jpegData: Data,
-        manifest: ManifestDefinition,
-        format: String,
-        signer: Signer
+    /// Signs a recorded video (QuickTime/MOV) the same way, embedding Content
+    /// Credentials and (optionally) a CAWG identity. Returns the signed file URL.
+    func signVideo(at sourceURL: URL, creator: Creator = .empty, bindIdentity: Bool = false) throws -> VideoResult {
+        let format = "video/quicktime"
+        let manifest = makeManifest(format: format, creator: creator)
+        let wantsIdentity = bindIdentity && !creator.normalized.isEmpty
+
+        var identityBound = false
+        var outURL: URL?
+
+        if wantsIdentity, let cawg = try? Signer(settingsTOML: cawgSettingsTOML()) {
+            outURL = try? signVideoOnce(manifest, source: sourceURL, signer: cawg)
+            identityBound = outURL != nil
+        }
+        let url = try outURL ?? signVideoOnce(
+            manifest, source: sourceURL, signer: try Signer(info: signerInfo)
+        )
+
+        let manifestJSON = (try? readManifest(fromFile: url, format: format)) ?? "{}"
+        return VideoResult(signedVideoURL: url, manifestJSON: manifestJSON, identityBound: identityBound)
+    }
+
+    // MARK: - One-shot sign passes
+
+    /// Signs `source` bytes into a temp file and returns the signed bytes. Each
+    /// call uses a fresh output file so a failed attempt can't corrupt a retry.
+    private func signDataOnce(
+        _ manifest: ManifestDefinition, format: String, source: Data, signer: Signer
     ) throws -> Data {
-        let outputURL = FileManager.default
-            .urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent(UUID().uuidString)
-            .appendingPathExtension("jpg")
+        let outputURL = Self.tempURL(ext: "bin")
         FileManager.default.createFile(atPath: outputURL.path, contents: nil)
         defer { try? FileManager.default.removeItem(at: outputURL) }
 
         let builder = try Builder(manifest: manifest)
         try builder.sign(
             format: format,
-            source: try Stream(data: jpegData),
+            source: try Stream(data: source),
             destination: try Stream(writeTo: outputURL),
             signer: signer
         )
         return try Data(contentsOf: outputURL, options: .uncached)
+    }
+
+    /// Signs the file at `source` into a new temp file, returning its URL (kept).
+    private func signVideoOnce(
+        _ manifest: ManifestDefinition, source: URL, signer: Signer
+    ) throws -> URL {
+        let outputURL = Self.tempURL(ext: "mov")
+        FileManager.default.createFile(atPath: outputURL.path, contents: nil)
+
+        let builder = try Builder(manifest: manifest)
+        do {
+            try builder.sign(
+                format: "video/quicktime",
+                source: try Stream(readFrom: source),
+                destination: try Stream(writeTo: outputURL),
+                signer: signer
+            )
+        } catch {
+            try? FileManager.default.removeItem(at: outputURL)
+            throw error
+        }
+        return outputURL
+    }
+
+    private static func tempURL(ext: String) -> URL {
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension(ext)
     }
 
     /// Builds a c2pa-rs settings document (TOML) that configures both the main
@@ -254,6 +297,13 @@ final class ContentCredentialSigner {
     /// Reads the embedded manifest store out of a signed asset as pretty JSON.
     func readManifest(from data: Data, format: String = "image/jpeg") throws -> String {
         let reader = try Reader(format: format, stream: try Stream(data: data))
+        return try reader.json()
+    }
+
+    /// Reads the manifest from a signed file (used for videos, which we keep on
+    /// disk rather than loading into memory).
+    func readManifest(fromFile url: URL, format: String) throws -> String {
+        let reader = try Reader(format: format, stream: try Stream(readFrom: url))
         return try reader.json()
     }
 

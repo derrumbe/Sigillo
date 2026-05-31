@@ -33,6 +33,26 @@ JSON.
 Built on the open-source Content Authenticity tools:
 <https://opensource.contentauthenticity.org/docs/introduction/>
 
+## Camera controls
+
+The capture screen ([CameraControlsView](Sources/Views/CameraControlsView.swift),
+driven by [CameraController](Sources/Camera/CameraController.swift)) offers:
+
+| Control | Notes |
+|---|---|
+| **Photo / Video** | Segmented mode switch. Video records QuickTime and is signed the same way (`video/quicktime` manifest). |
+| **Zoom** | Pinch-to-zoom plus 1×/2×/3×/5× presets, clamped to the device's range (uses the best back virtual camera). |
+| **Flash** | Off / Auto / On — photo flash, or torch while recording video. |
+| **Exposure** | Exposure-bias slider over the device's supported range. |
+| **Aspect ratio** | 4:3 (native), 16:9, 1:1 — photos are center-cropped at full resolution ([ImageCrop](Sources/Camera/ImageCrop.swift)). |
+| **Timer** | Off / 3s / 10s self-timer with an on-screen countdown. |
+| **Live Photos** | Captures the paired movie; the **still carries the credential**, and the (unsigned) movie is kept so the Live Photo pairing survives a save to Photos. |
+| **Night mode** | Toggles low-light boost where supported. *Note:* Apple does not expose its computational Night Mode for stills to third-party apps, so this is the closest public-API equivalent, not the system Night Mode. |
+
+Camera settings (focal length, exposure, ISO, lens, …) are read from
+`AVCapturePhoto.metadata` and, when the Camera-settings toggle is on, embedded in
+the signed `stds.exif` assertion — so they survive the aspect-ratio crop.
+
 ## Author / creator credential
 
 Tap the **person icon** (top-right of the camera) to set a creator name and an
@@ -238,16 +258,19 @@ scripts/make_app_icon.py            renders the film-noir app icon (Pillow)
 Sources/
   C2PACameraApp.swift               @main App entry point
   Camera/
-    CameraController.swift          AVCaptureSession + photo capture
+    CameraController.swift          AVCaptureSession: stills, video, controls
+    CameraControls.swift            control enums (mode/flash/aspect/timer)
     CameraPreview.swift             live preview (UIViewRepresentable)
-    CameraViewModel.swift           capture → sign → review orchestration
+    CameraViewModel.swift           capture/record → sign → review orchestration
+    ImageCrop.swift                 aspect-ratio crop (full resolution)
     LocationProvider.swift          CoreLocation (GPS for metadata)
     CaptureMetadataBuilder.swift    builds the stds.exif assertion
   C2PA/
-    ContentCredentialSigner.swift   builds manifest, signs, reads back  ← core
+    ContentCredentialSigner.swift   builds manifest, signs photo+video  ← core
     Creator.swift                   author identity + metadata options + storage
   Views/
-    CameraScreen.swift              shutter UI + creator badge / settings entry
+    CameraScreen.swift              preview + controls composition
+    CameraControlsView.swift        top bar, zoom, exposure, mode, shutter
     CreatorSettingsView.swift       edit author credential + metadata toggles
     PhotoReviewView.swift           credential summary + raw manifest JSON + Share
   Assets.xcassets/AppIcon...        film-noir camera-aperture icon (generated)

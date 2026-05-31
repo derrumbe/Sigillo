@@ -23,7 +23,11 @@ struct CaptureMetadataBuilder {
     }
 
     /// Returns the assertion data, or `nil` if nothing is enabled / available.
-    mutating func build(jpeg: Data, location: CLLocation?) -> [String: Any]? {
+    ///
+    /// - Parameter properties: the `AVCapturePhoto.metadata` dictionary (same
+    ///   shape as `CGImageSource` properties), so camera settings survive any
+    ///   later cropping/re-encoding of the image bytes.
+    mutating func build(properties: [String: Any], location: CLLocation?) -> [String: Any]? {
         if options.deviceInfo {
             data["exif:Make"] = "Apple"
             data["exif:Model"] = Self.deviceModelIdentifier
@@ -37,7 +41,7 @@ struct CaptureMetadataBuilder {
         }
 
         if options.cameraSettings {
-            applyCameraSettings(from: jpeg)
+            applyCameraSettings(from: properties)
         }
 
         if options.location {
@@ -48,14 +52,9 @@ struct CaptureMetadataBuilder {
         return data.count > 1 ? data : nil
     }
 
-    // MARK: - Camera settings (from the captured JPEG's EXIF)
+    // MARK: - Camera settings (from the captured photo's EXIF metadata)
 
-    private mutating func applyCameraSettings(from jpeg: Data) {
-        guard
-            let source = CGImageSourceCreateWithData(jpeg as CFData, nil),
-            let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [String: Any]
-        else { return }
-
+    private mutating func applyCameraSettings(from properties: [String: Any]) {
         if let exif = properties[kCGImagePropertyExifDictionary as String] as? [String: Any] {
             let mappings: [(CFString, String)] = [
                 (kCGImagePropertyExifFocalLength, "exif:FocalLength"),
@@ -80,13 +79,12 @@ struct CaptureMetadataBuilder {
             if let iso = (exif[kCGImagePropertyExifISOSpeedRatings as String] as? [Int])?.first {
                 data["exif:ISOSpeedRatings"] = "\(iso)"
             }
-        }
-
-        if let width = properties[kCGImagePropertyPixelWidth as String] {
-            data["exif:PixelXDimension"] = "\(width)"
-        }
-        if let height = properties[kCGImagePropertyPixelHeight as String] {
-            data["exif:PixelYDimension"] = "\(height)"
+            if let w = exif[kCGImagePropertyExifPixelXDimension as String] {
+                data["exif:PixelXDimension"] = "\(w)"
+            }
+            if let h = exif[kCGImagePropertyExifPixelYDimension as String] {
+                data["exif:PixelYDimension"] = "\(h)"
+            }
         }
     }
 

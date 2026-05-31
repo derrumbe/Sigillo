@@ -1,13 +1,15 @@
 import SwiftUI
 import Photos
+import AVFoundation
 
-/// Orchestrates the capture → sign → review flow and exposes UI state.
+/// Orchestrates the capture/record → sign → review flow and exposes UI state.
 @MainActor
 final class CameraViewModel: ObservableObject {
 
-    /// The signed photo currently presented for review, if any.
-    @Published var captured: CapturedPhoto?
+    /// The signed item currently presented for review, if any.
+    @Published var captured: CapturedItem?
     @Published var isBusy = false
+    @Published var countdown: Int?
     @Published var errorMessage: String?
     @Published var saveConfirmation: String?
 
@@ -17,17 +19,23 @@ final class CameraViewModel: ObservableObject {
     private let signer: ContentCredentialSigner?
     private let signerInitError: String?
 
-    struct CapturedPhoto: Identifiable {
+    enum MediaKind { case photo, video }
+
+    struct CapturedItem: Identifiable {
         let id = UUID()
-        let image: UIImage
-        let signedData: Data
-        let manifestJSON: String
-        /// On-disk copy of the signed JPEG, used for Share/AirDrop so the exact
-        /// signed bytes (with the embedded manifest) are transferred unchanged.
+        let kind: MediaKind
+        /// Still image, or a poster frame for video.
+        let image: UIImage?
+        /// Signed JPEG bytes (photo only).
+        let signedData: Data?
+        /// On-disk signed asset for Share/AirDrop (exact signed bytes).
         let fileURL: URL
-        /// Whether a CAWG identity credential was requested, and whether it bound.
+        let manifestJSON: String
         let identityRequested: Bool
         let identityBound: Bool
+        /// Original (unsigned) Live Photo movie, kept so the pairing survives a
+        /// save to Photos. The still carries the credential.
+        let livePhotoMovieURL: URL?
     }
 
     init() {
@@ -46,39 +54,45 @@ final class CameraViewModel: ObservableObject {
         if let signerInitError { errorMessage = signerInitError }
     }
 
-    /// Begins location updates (and requests permission) — called when the user
-    /// enables the Location metadata toggle.
-    func enableLocation() {
-        locationProvider.start()
-    }
-
     func onDisappear() {
         camera.stop()
     }
 
-    /// Captures a photo and embeds Content Credentials before presenting it.
-    func capture() {
-        guard !isBusy else { return }
-        guard let signer else {
-            errorMessage = signerInitError ?? "Signer unavailable."
-            return
-        }
+    func enableLocation() {
+        locationProvider.start()
+    }
 
+    // MARK: - Shutter
+
+    /// Shutter action: capture a photo, or start/stop recording in video mode.
+    func shutter() {
+        switch camera.captureMode {
+        case .photo: capturePhoto()
+        case .video: camera.isRecording ? stopRecording() : startRecording()
+        }
+    }
+
+    private var wantsIdentity: Bool {
+        creatorStore.bindIdentity && !creatorStore.creator.isEmpty
+    }
+
+    private func capturePhoto() {
+        guard !isBusy, !camera.isRecording else { return }
+        guard let signer else { errorMessage = signerInitError ?? "Signer unavailable."; return }
         isBusy = true
         Task {
             defer { isBusy = false }
+            await runCountdown()
             do {
-                let jpeg = try await camera.capturePhoto()
-                let wantsIdentity = creatorStore.bindIdentity && !creatorStore.creator.isEmpty
+                let capture = try await camera.capturePhoto()
+                let croppedData = ImageCrop.crop(capture.data, to: camera.aspect)
 
-                var metadataBuilder = CaptureMetadataBuilder(options: creatorStore.metadata)
-                let exif = metadataBuilder.build(
-                    jpeg: jpeg,
-                    location: locationProvider.currentLocation
-                )
+                var builder = CaptureMetadataBuilder(options: creatorStore.metadata)
+                let exif = builder.build(properties: capture.metadata,
+                                         location: locationProvider.currentLocation)
 
                 let result = try signer.sign(
-                    jpegData: jpeg,
+                    jpegData: croppedData,
                     creator: creatorStore.creator,
                     bindIdentity: creatorStore.bindIdentity,
                     exif: exif
@@ -86,15 +100,17 @@ final class CameraViewModel: ObservableObject {
                 guard let image = UIImage(data: result.signedImageData) else {
                     throw CameraError.noImageData
                 }
-                cleanupCurrentTempFile()
-                let fileURL = try writeTempFile(result.signedImageData)
-                captured = CapturedPhoto(
+                cleanupCurrentItem()
+                let fileURL = try writeTempFile(result.signedImageData, ext: "jpg")
+                captured = CapturedItem(
+                    kind: .photo,
                     image: image,
                     signedData: result.signedImageData,
-                    manifestJSON: result.manifestJSON,
                     fileURL: fileURL,
+                    manifestJSON: result.manifestJSON,
                     identityRequested: wantsIdentity,
-                    identityBound: result.identityBound
+                    identityBound: result.identityBound,
+                    livePhotoMovieURL: capture.livePhotoMovieURL
                 )
             } catch {
                 errorMessage = error.localizedDescription
@@ -102,39 +118,66 @@ final class CameraViewModel: ObservableObject {
         }
     }
 
+    private func startRecording() {
+        guard !isBusy else { return }
+        isBusy = true
+        Task {
+            await runCountdown()
+            isBusy = false
+            camera.startRecording()
+        }
+    }
+
+    private func stopRecording() {
+        guard let signer else { return }
+        isBusy = true
+        Task {
+            defer { isBusy = false }
+            do {
+                let rawURL = try await camera.stopRecording()
+                let result = try signer.signVideo(
+                    at: rawURL,
+                    creator: creatorStore.creator,
+                    bindIdentity: creatorStore.bindIdentity
+                )
+                try? FileManager.default.removeItem(at: rawURL)
+
+                cleanupCurrentItem()
+                let shareURL = try moveToTempFile(result.signedVideoURL, ext: "mov")
+                captured = CapturedItem(
+                    kind: .video,
+                    image: Self.posterFrame(for: shareURL),
+                    signedData: nil,
+                    fileURL: shareURL,
+                    manifestJSON: result.manifestJSON,
+                    identityRequested: wantsIdentity,
+                    identityBound: result.identityBound,
+                    livePhotoMovieURL: nil
+                )
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func runCountdown() async {
+        let seconds = camera.timer.rawValue
+        guard seconds > 0 else { return }
+        for remaining in stride(from: seconds, through: 1, by: -1) {
+            countdown = remaining
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+        }
+        countdown = nil
+    }
+
     func dismissReview() {
-        cleanupCurrentTempFile()
+        cleanupCurrentItem()
         captured = nil
         saveConfirmation = nil
     }
 
-    /// Writes the signed bytes to a uniquely-named file in the temporary
-    /// directory so a `ShareLink` can transfer it (e.g. via AirDrop) verbatim.
-    /// The filename becomes the name the recipient sees.
-    private func writeTempFile(_ data: Data) throws -> URL {
-        let name = "C2PA Camera \(Self.fileTimestamp).jpg"
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent(name)
-        try data.write(to: url, options: .atomic)
-        return url
-    }
+    // MARK: - Save to Photos
 
-    private func cleanupCurrentTempFile() {
-        if let url = captured?.fileURL {
-            try? FileManager.default.removeItem(at: url)
-        }
-    }
-
-    private static var fileTimestamp: String {
-        ISO8601DateFormatter.string(
-            from: Date(),
-            timeZone: .current,
-            formatOptions: [.withInternetDateTime]
-        )
-        .replacingOccurrences(of: ":", with: ".")
-    }
-
-    /// Saves the signed asset to the photo library, preserving the embedded
-    /// C2PA manifest (we add the original file data, not a re-encoded UIImage).
     func saveToLibrary() {
         guard let captured else { return }
         Task {
@@ -146,12 +189,62 @@ final class CameraViewModel: ObservableObject {
             do {
                 try await PHPhotoLibrary.shared().performChanges {
                     let request = PHAssetCreationRequest.forAsset()
-                    request.addResource(with: .photo, data: captured.signedData, options: nil)
+                    switch captured.kind {
+                    case .photo:
+                        if let data = captured.signedData {
+                            request.addResource(with: .photo, data: data, options: nil)
+                        }
+                        if let movie = captured.livePhotoMovieURL {
+                            let opts = PHAssetResourceCreationOptions()
+                            opts.shouldMoveFile = false
+                            request.addResource(with: .pairedVideo, fileURL: movie, options: opts)
+                        }
+                    case .video:
+                        request.addResource(with: .video, fileURL: captured.fileURL, options: nil)
+                    }
                 }
-                saveConfirmation = "Saved to Photos with Content Credentials."
+                saveConfirmation = captured.kind == .photo
+                    ? "Saved to Photos with Content Credentials."
+                    : "Saved video to Photos with Content Credentials."
             } catch {
                 errorMessage = "Could not save: \(error.localizedDescription)"
             }
         }
+    }
+
+    // MARK: - Temp files
+
+    private func writeTempFile(_ data: Data, ext: String) throws -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("C2PA Camera \(Self.fileTimestamp).\(ext)")
+        try data.write(to: url, options: .atomic)
+        return url
+    }
+
+    private func moveToTempFile(_ source: URL, ext: String) throws -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("C2PA Camera \(Self.fileTimestamp).\(ext)")
+        try? FileManager.default.removeItem(at: url)
+        try FileManager.default.moveItem(at: source, to: url)
+        return url
+    }
+
+    private func cleanupCurrentItem() {
+        if let url = captured?.fileURL { try? FileManager.default.removeItem(at: url) }
+        if let movie = captured?.livePhotoMovieURL { try? FileManager.default.removeItem(at: movie) }
+    }
+
+    private static var fileTimestamp: String {
+        ISO8601DateFormatter.string(
+            from: Date(), timeZone: .current, formatOptions: [.withInternetDateTime]
+        ).replacingOccurrences(of: ":", with: ".")
+    }
+
+    private static func posterFrame(for url: URL) -> UIImage? {
+        let asset = AVURLAsset(url: url)
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        guard let cg = try? generator.copyCGImage(at: .zero, actualTime: nil) else { return nil }
+        return UIImage(cgImage: cg)
     }
 }
