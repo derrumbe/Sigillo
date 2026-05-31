@@ -112,36 +112,113 @@ struct ZoomControls: View {
     }
 }
 
-/// Exposure compensation as discrete EV stops (not a continuous slider),
-/// matching the zoom-preset style.
-struct ExposureControls: View {
+/// Exposure compensation: a compact chip that reveals a radial dial when tapped.
+/// The dial auto-hides a few seconds after the last adjustment.
+struct ExposureControl: View {
     @ObservedObject var camera: CameraController
-
-    private var stops: [Float] {
-        [-2, -1, 0, 1, 2].filter { $0 >= camera.minExposureBias && $0 <= camera.maxExposureBias }
-    }
+    @State private var open = false
+    @State private var hideTask: Task<Void, Never>?
 
     var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "plusminus.circle.fill")
-                .font(.caption2).foregroundStyle(.white).padding(.trailing, 2)
-            ForEach(stops, id: \.self) { ev in
-                let selected = abs(camera.exposureBias - ev) < 0.05
-                Button { camera.setExposureBias(ev) } label: {
-                    Text(label(ev))
-                        .font(.system(size: selected ? 13 : 12, weight: .bold))
-                        .foregroundStyle(selected ? .yellow : .white)
-                        .frame(width: 38, height: 34)
-                        .background(.black.opacity(0.4), in: Capsule())
+        VStack(spacing: 10) {
+            if open {
+                ExposureDial(camera: camera) { scheduleHide() }
+                    .frame(width: 200, height: 200)
+                    .transition(.scale.combined(with: .opacity))
+            }
+            Button { toggle() } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "sun.max.fill")
+                    Text(String(format: "%+.1f EV", camera.exposureBias))
                 }
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(open || camera.exposureBias != 0 ? .yellow : .white)
+                .padding(.horizontal, 12).padding(.vertical, 6)
+                .background(.black.opacity(0.4), in: Capsule())
             }
         }
-        .padding(6)
-        .background(.black.opacity(0.25), in: Capsule())
+        .animation(.easeInOut(duration: 0.2), value: open)
     }
 
-    private func label(_ ev: Float) -> String {
-        ev == 0 ? "0" : String(format: "%+.0f", ev)
+    private func toggle() {
+        open.toggle()
+        if open { scheduleHide() } else { hideTask?.cancel() }
+    }
+
+    private func scheduleHide() {
+        hideTask?.cancel()
+        hideTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            if !Task.isCancelled { open = false }
+        }
+    }
+}
+
+/// A rotary exposure-compensation dial. Drag around the arc to set the value.
+struct ExposureDial: View {
+    @ObservedObject var camera: CameraController
+    var onChange: () -> Void
+
+    private let sweep = 270.0   // degrees of usable arc (gap at the bottom)
+    private var lo: Float { max(camera.minExposureBias, -3) }
+    private var hi: Float { min(camera.maxExposureBias, 3) }
+    private var ticks: [Float] { Array(stride(from: lo, through: hi, by: Float(1))) }
+
+    var body: some View {
+        GeometryReader { geo in
+            let radius = min(geo.size.width, geo.size.height) / 2 - 10
+            let center = CGPoint(x: geo.size.width / 2, y: geo.size.height / 2)
+            ZStack {
+                Circle().fill(.black.opacity(0.55))
+                Circle().strokeBorder(.white.opacity(0.2), lineWidth: 3).padding(6)
+
+                ForEach(ticks, id: \.self) { ev in
+                    Circle()
+                        .fill(ev == 0 ? .white : .white.opacity(0.45))
+                        .frame(width: ev == 0 ? 6 : 4, height: ev == 0 ? 6 : 4)
+                        .position(point(forValue: ev, center: center, radius: radius))
+                }
+
+                Circle()
+                    .fill(.yellow)
+                    .frame(width: 18, height: 18)
+                    .position(point(forValue: camera.exposureBias, center: center, radius: radius))
+
+                VStack(spacing: 0) {
+                    Text(String(format: "%+.1f", camera.exposureBias))
+                        .font(.system(size: 26, weight: .bold, design: .rounded))
+                    Text("EV").font(.caption2)
+                }
+                .foregroundStyle(.white)
+            }
+            .contentShape(Circle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { update(at: $0.location, center: center) }
+            )
+        }
+    }
+
+    private func angle(forValue v: Float) -> Double {
+        let span = max(hi - lo, 0.0001)
+        let t = Double((v - lo) / span)
+        return -sweep / 2 + t * sweep
+    }
+
+    private func point(forValue v: Float, center: CGPoint, radius: CGFloat) -> CGPoint {
+        let rad = angle(forValue: v) * .pi / 180
+        return CGPoint(x: center.x + radius * CGFloat(sin(rad)),
+                       y: center.y - radius * CGFloat(cos(rad)))
+    }
+
+    private func update(at location: CGPoint, center: CGPoint) {
+        let dx = Double(location.x - center.x)
+        let dy = Double(location.y - center.y)
+        var deg = atan2(dx, -dy) * 180 / .pi          // 0° at top, clockwise
+        deg = max(-sweep / 2, min(sweep / 2, deg))      // clamp into the arc
+        let t = Float((deg + sweep / 2) / sweep)
+        camera.setExposureBias(lo + t * (hi - lo))
+        onChange()
     }
 }
 
