@@ -16,10 +16,9 @@ final class CameraViewModel: ObservableObject {
     let camera = CameraController()
     let creatorStore = CreatorStore()
     let locationProvider = LocationProvider()
+    let rollStore = CredentialRollStore()
     private let signer: ContentCredentialSigner?
     private let signerInitError: String?
-
-    enum MediaKind { case photo, video }
 
     struct CapturedItem: Identifiable {
         let id = UUID()
@@ -36,6 +35,8 @@ final class CameraViewModel: ObservableObject {
         /// Original (unsigned) Live Photo movie, kept so the pairing survives a
         /// save to Photos. The still carries the credential.
         let livePhotoMovieURL: URL?
+        /// Whether this capture was stored in the Credential Roll.
+        var savedToRoll: Bool
     }
 
     init() {
@@ -102,6 +103,7 @@ final class CameraViewModel: ObservableObject {
                 }
                 cleanupCurrentItem()
                 let fileURL = try writeTempFile(result.signedImageData, ext: "jpg")
+                let saved = creatorStore.autoSaveToRoll && rollStore.add(from: fileURL, kind: .photo) != nil
                 captured = CapturedItem(
                     kind: .photo,
                     image: image,
@@ -110,7 +112,8 @@ final class CameraViewModel: ObservableObject {
                     manifestJSON: result.manifestJSON,
                     identityRequested: wantsIdentity,
                     identityBound: result.identityBound,
-                    livePhotoMovieURL: capture.livePhotoMovieURL
+                    livePhotoMovieURL: capture.livePhotoMovieURL,
+                    savedToRoll: saved
                 )
             } catch {
                 errorMessage = error.localizedDescription
@@ -144,6 +147,7 @@ final class CameraViewModel: ObservableObject {
 
                 cleanupCurrentItem()
                 let shareURL = try moveToTempFile(result.signedVideoURL, ext: "mov")
+                let saved = creatorStore.autoSaveToRoll && rollStore.add(from: shareURL, kind: .video) != nil
                 captured = CapturedItem(
                     kind: .video,
                     image: Self.posterFrame(for: shareURL),
@@ -152,7 +156,8 @@ final class CameraViewModel: ObservableObject {
                     manifestJSON: result.manifestJSON,
                     identityRequested: wantsIdentity,
                     identityBound: result.identityBound,
-                    livePhotoMovieURL: nil
+                    livePhotoMovieURL: nil,
+                    savedToRoll: saved
                 )
             } catch {
                 errorMessage = error.localizedDescription
@@ -174,6 +179,16 @@ final class CameraViewModel: ObservableObject {
         cleanupCurrentItem()
         captured = nil
         saveConfirmation = nil
+    }
+
+    /// Manually store the current capture in the Credential Roll.
+    func addCurrentToRoll() {
+        guard var item = captured, !item.savedToRoll else { return }
+        if rollStore.add(from: item.fileURL, kind: item.kind) != nil {
+            item.savedToRoll = true
+            captured = item
+            saveConfirmation = "Added to Credential Roll."
+        }
     }
 
     // MARK: - Save to Photos

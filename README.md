@@ -235,6 +235,25 @@ The review screen has two export buttons:
   This is a known Photos limitation, which is exactly why the in-app **Share**
   path exists.
 
+## Credential Roll
+
+Because the Photos pipeline is lossy, the app keeps its own
+[Credential Roll](Sources/Camera/CredentialRoll.swift) — a private gallery (the
+stack icon on the camera screen) that stores each signed photo/video **verbatim**
+in the app's `Application Support` directory. Nothing re-encodes them, so the
+embedded manifest is preserved exactly; sharing back out uses the same byte-exact
+`ShareLink`. Captures are auto-saved here by default (toggle in creator settings;
+you can also add manually from the review screen).
+
+- **Grid** of thumbnails, each badged with a seal (and a video glyph for clips).
+- **Tap** an item → full-screen viewer that re-reads the manifest from the stored
+  file ([RollItemView](Sources/Views/RollItemView.swift)) and shows the
+  credential summary, plays video, and offers Share/Delete.
+- **Long-press** a grid item for a Delete action.
+- Files live in the app sandbox: not in the system Photos library, and reachable
+  by other apps only through the Share sheet (controlled, credential-preserving
+  export). They are not backed up to iCloud Photos.
+
 ## Verifying a captured photo
 
 After AirDropping the photo off the device (via **Share**), verify it with any
@@ -265,14 +284,19 @@ Sources/
     ImageCrop.swift                 aspect-ratio crop (full resolution)
     LocationProvider.swift          CoreLocation (GPS for metadata)
     CaptureMetadataBuilder.swift    builds the stds.exif assertion
+    CredentialRoll.swift            app-private signed-asset gallery store
   C2PA/
     ContentCredentialSigner.swift   builds manifest, signs photo+video  ← core
     Creator.swift                   author identity + metadata options + storage
+    ManifestSummary.swift           manifest JSON → friendly summary + card
+    ManifestReader.swift            read a manifest from a stored file
   Views/
     CameraScreen.swift              preview + controls composition
-    CameraControlsView.swift        top bar, zoom, exposure, mode, shutter
+    CameraControlsView.swift        top bar, zoom, exposure, mode, shutter, gallery
     CreatorSettingsView.swift       edit author credential + metadata toggles
     PhotoReviewView.swift           credential summary + raw manifest JSON + Share
+    CredentialRollView.swift        grid gallery of saved signed assets
+    RollItemView.swift              full-screen roll item: view / verify / share
   Assets.xcassets/AppIcon...        film-noir camera-aperture icon (generated)
   Resources/                        es256_* (claim) + identity_* (CAWG) creds (generated)
                                     Info.plist is generated from project.yml

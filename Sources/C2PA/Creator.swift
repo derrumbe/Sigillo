@@ -70,9 +70,15 @@ final class CreatorStore: ObservableObject {
         }
     }
 
+    /// Automatically save every signed capture to the in-app Credential Roll.
+    @Published var autoSaveToRoll: Bool {
+        didSet { defaults.set(autoSaveToRoll, forKey: rollKey) }
+    }
+
     private let key = "creator.v1"
     private let identityKey = "creator.bindIdentity.v1"
     private let metadataKey = "creator.metadata.v1"
+    private let rollKey = "creator.autoSaveToRoll.v1"
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
@@ -90,6 +96,7 @@ final class CreatorStore: ObservableObject {
         } else {
             metadata = .default
         }
+        autoSaveToRoll = defaults.object(forKey: rollKey) as? Bool ?? true
     }
 
     private func persist() {

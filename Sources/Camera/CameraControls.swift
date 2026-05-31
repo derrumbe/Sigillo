@@ -7,6 +7,9 @@ enum CaptureMode: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+/// The kind of captured/stored media.
+enum MediaKind { case photo, video }
+
 /// Flash / torch behavior.
 enum FlashOption: String, CaseIterable, Identifiable {
     case off, auto, on

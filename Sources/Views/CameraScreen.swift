@@ -6,6 +6,7 @@ import SwiftUI
 struct CameraScreen: View {
     @StateObject private var model = CameraViewModel()
     @State private var showSettings = false
+    @State private var showRoll = false
     @State private var pinchBase: CGFloat = 1
 
     var body: some View {
@@ -33,6 +34,9 @@ struct CameraScreen: View {
         }
         .sheet(isPresented: $showSettings) {
             CreatorSettingsView(store: model.creatorStore) { model.enableLocation() }
+        }
+        .sheet(isPresented: $showRoll) {
+            CredentialRollView(store: model.rollStore)
         }
         .alert(
             "Something went wrong",
@@ -74,7 +78,9 @@ struct CameraScreen: View {
             }
             .clipped()
 
-            CaptureBar(camera: model.camera, isBusy: model.isBusy) { model.shutter() }
+            CaptureBar(camera: model.camera, isBusy: model.isBusy,
+                       onShutter: { model.shutter() },
+                       onGallery: { showRoll = true })
         }
     }
 

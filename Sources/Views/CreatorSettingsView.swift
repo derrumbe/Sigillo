@@ -61,6 +61,15 @@ struct CreatorSettingsView: View {
                 .onChange(of: store.metadata.location) { enabled in
                     if enabled { onLocationEnabled() }
                 }
+
+                Section {
+                    Toggle("Auto-save to Credential Roll", isOn: $store.autoSaveToRoll)
+                } footer: {
+                    Text("Saves every signed capture to the in-app Credential Roll, "
+                        + "which preserves the C2PA manifest exactly (unlike exporting "
+                        + "from the Photos app). Open it with the stack icon on the "
+                        + "camera screen.")
+                }
             }
             .navigationTitle("Creator")
             .navigationBarTitleDisplayMode(.inline)

@@ -227,6 +227,7 @@ struct CaptureBar: View {
     @ObservedObject var camera: CameraController
     let isBusy: Bool
     let onShutter: () -> Void
+    let onGallery: () -> Void
 
     var body: some View {
         VStack(spacing: 14) {
@@ -241,8 +242,22 @@ struct CaptureBar: View {
             .frame(width: 200)
             .disabled(camera.isRecording || isBusy)
 
-            ShutterButton(mode: camera.captureMode, recording: camera.isRecording,
-                          busy: isBusy, action: onShutter)
+            ZStack {
+                ShutterButton(mode: camera.captureMode, recording: camera.isRecording,
+                              busy: isBusy, action: onShutter)
+                HStack {
+                    Button(action: onGallery) {
+                        Image(systemName: "photo.stack")
+                            .font(.title2)
+                            .foregroundStyle(.white)
+                            .frame(width: 52, height: 52)
+                            .background(.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+                    }
+                    .accessibilityLabel("Credential Roll")
+                    Spacer()
+                }
+                .padding(.horizontal, 28)
+            }
         }
         .padding(.vertical, 14)
         .frame(maxWidth: .infinity)
