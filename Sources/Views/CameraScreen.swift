@@ -66,7 +66,8 @@ struct CameraScreen: View {
                         .background(.ultraThinMaterial, in: Capsule())
                         .padding(.top, 8)
                     Spacer()
-                    ExposureSlider(camera: model.camera)
+                    ExposureControls(camera: model.camera)
+                        .padding(.bottom, 8)
                     ZoomControls(camera: model.camera)
                         .padding(.bottom, 12)
                 }

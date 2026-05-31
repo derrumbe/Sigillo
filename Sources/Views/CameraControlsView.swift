@@ -112,22 +112,36 @@ struct ZoomControls: View {
     }
 }
 
-/// Exposure-bias slider with sun icons.
-struct ExposureSlider: View {
+/// Exposure compensation as discrete EV stops (not a continuous slider),
+/// matching the zoom-preset style.
+struct ExposureControls: View {
     @ObservedObject var camera: CameraController
 
+    private var stops: [Float] {
+        [-2, -1, 0, 1, 2].filter { $0 >= camera.minExposureBias && $0 <= camera.maxExposureBias }
+    }
+
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "sun.min").font(.caption2).foregroundStyle(.white)
-            Slider(
-                value: Binding(get: { camera.exposureBias },
-                               set: { camera.setExposureBias($0) }),
-                in: camera.minExposureBias...camera.maxExposureBias
-            )
-            .tint(.yellow)
-            Image(systemName: "sun.max.fill").font(.caption2).foregroundStyle(.white)
+        HStack(spacing: 6) {
+            Image(systemName: "plusminus.circle.fill")
+                .font(.caption2).foregroundStyle(.white).padding(.trailing, 2)
+            ForEach(stops, id: \.self) { ev in
+                let selected = abs(camera.exposureBias - ev) < 0.05
+                Button { camera.setExposureBias(ev) } label: {
+                    Text(label(ev))
+                        .font(.system(size: selected ? 13 : 12, weight: .bold))
+                        .foregroundStyle(selected ? .yellow : .white)
+                        .frame(width: 38, height: 34)
+                        .background(.black.opacity(0.4), in: Capsule())
+                }
+            }
         }
-        .padding(.horizontal, 24)
+        .padding(6)
+        .background(.black.opacity(0.25), in: Capsule())
+    }
+
+    private func label(_ ev: Float) -> String {
+        ev == 0 ? "0" : String(format: "%+.0f", ev)
     }
 }
 

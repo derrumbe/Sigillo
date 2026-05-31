@@ -43,7 +43,7 @@ driven by [CameraController](Sources/Camera/CameraController.swift)) offers:
 | **Photo / Video** | Segmented mode switch. Video records QuickTime and is signed the same way (`video/quicktime` manifest). |
 | **Zoom** | Pinch-to-zoom plus 1×/2×/3×/5× presets, clamped to the device's range (uses the best back virtual camera). |
 | **Flash** | Off / Auto / On — photo flash, or torch while recording video. |
-| **Exposure** | Exposure-bias slider over the device's supported range. |
+| **Exposure** | Fixed exposure-compensation stops (−2 / −1 / 0 / +1 / +2 EV), like the zoom presets — not a continuous slider. |
 | **Aspect ratio** | 4:3 (native), 16:9, 1:1 — photos are center-cropped at full resolution ([ImageCrop](Sources/Camera/ImageCrop.swift)). |
 | **Timer** | Off / 3s / 10s self-timer with an on-screen countdown. |
 | **Live Photos** | Captures the paired movie; the **still carries the credential**, and the (unsigned) movie is kept so the Live Photo pairing survives a save to Photos. |
