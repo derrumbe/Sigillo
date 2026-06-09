@@ -33,7 +33,7 @@ final class CameraController: NSObject, ObservableObject {
 
     let session = AVCaptureSession()
 
-    private let sessionQueue = DispatchQueue(label: "org.contentauth.example.C2PACamera.session")
+    private let sessionQueue = DispatchQueue(label: "org.contentauth.example.Sigillo.session")
     private let photoOutput = AVCapturePhotoOutput()
     private var movieOutput: AVCaptureMovieFileOutput?
     private var videoInput: AVCaptureDeviceInput?

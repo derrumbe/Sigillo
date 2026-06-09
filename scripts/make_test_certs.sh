@@ -53,7 +53,7 @@ openssl ecparam -name prime256v1 -genkey -noout -out "${WORK}/root.key" 2>/dev/n
 openssl req -new -x509 -sha256 -days 3650 \
   -key "${WORK}/root.key" \
   -out "${WORK}/root.crt" \
-  -subj "/CN=C2PA Camera Test Root CA/O=Content Authenticity Example/C=US" \
+  -subj "/CN=Sigillo Test Root CA/O=Content Authenticity Example/C=US" \
   -addext "basicConstraints=critical,CA:TRUE" \
   -addext "keyUsage=critical,keyCertSign,cRLSign" \
   -addext "subjectKeyIdentifier=hash"
@@ -83,10 +83,10 @@ issue_leaf() {
 # ---------------------------------------------------------------------------
 # Two distinct leaves from the same root.
 # ---------------------------------------------------------------------------
-issue_leaf "claim" "C2PA Camera Test Signer" \
+issue_leaf "claim" "Sigillo Test Signer" \
   "${OUT_DIR}/es256_certs.pem" "${OUT_DIR}/es256_private.key"
 
-issue_leaf "identity" "C2PA Camera Creator Identity" \
+issue_leaf "identity" "Sigillo Creator Identity" \
   "${OUT_DIR}/identity_certs.pem" "${OUT_DIR}/identity_private.key"
 
 echo "Wrote:"
