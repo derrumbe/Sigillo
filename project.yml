@@ -1,6 +1,6 @@
 name: Sigillo
 options:
-  bundleIdPrefix: org.contentauth.example
+  bundleIdPrefix: org.xebecstudios
   deploymentTarget:
     iOS: "16.0"
   createIntermediateGroups: true
@@ -47,7 +47,7 @@ targets:
           Credentials when you enable the Location metadata option.
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: org.contentauth.example.Sigillo
+        PRODUCT_BUNDLE_IDENTIFIER: org.xebecstudios.Sigillo
         MARKETING_VERSION: "1.0"
         CURRENT_PROJECT_VERSION: "1"
         GENERATE_INFOPLIST_FILE: NO
@@ -57,7 +57,7 @@ targets:
         CODE_SIGN_STYLE: Automatic
         # Set your Apple Developer Team ID here (or in Xcode > Signing & Capabilities)
         # so the app can run on a physical device.
-        DEVELOPMENT_TEAM: ""
+        DEVELOPMENT_TEAM: "QAB3T8245F"
 
 schemes:
   Sigillo:
