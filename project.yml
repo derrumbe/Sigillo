@@ -35,6 +35,10 @@ targets:
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
         UIRequiresFullScreen: true
+        # Sigillo's only cryptography is C2PA digital signatures (ECDSA/ES256)
+        # and RFC 3161 timestamping — both exempt from US export control. No
+        # data-confidentiality encryption, so no non-exempt encryption is used.
+        ITSAppUsesNonExemptEncryption: false
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         NSCameraUsageDescription: >-
