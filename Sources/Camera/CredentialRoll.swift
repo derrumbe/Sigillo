@@ -46,7 +46,7 @@ final class CredentialRollStore: ObservableObject {
     @discardableResult
     func add(from source: URL, kind: MediaKind) -> RollItem? {
         let ext = kind == .photo ? "jpg" : "mov"
-        let dest = directory.appendingPathComponent("C2PA Camera \(Self.timestamp).\(ext)")
+        let dest = directory.appendingPathComponent("Sigillo \(Self.timestamp).\(ext)")
         do {
             try? FileManager.default.removeItem(at: dest)
             try FileManager.default.copyItem(at: source, to: dest)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the C2PA Camera app icon — a film-noir camera aperture.
+"""Generate the Sigillo app icon — a film-noir camera aperture.
 
 Renders a 1024x1024 opaque PNG into the asset catalog:
   Sources/Assets.xcassets/AppIcon.appiconset/icon-1024.png

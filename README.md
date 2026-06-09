@@ -1,4 +1,4 @@
-# C2PA Camera
+# Sigillo
 
 An iOS camera app that takes a photo and **automatically embeds signed
 [C2PA](https://spec.c2pa.org/specifications/specifications/2.4/index.html)
@@ -100,7 +100,7 @@ Notes:
 - The claim and the identity assertion are signed by **distinct credentials**:
   the claim signer uses `es256_certs.pem` / `es256_private.key`, while the
   `cawg_x509_signer` uses a separate `identity_certs.pem` / `identity_private.key`
-  (subject `CN=C2PA Camera Creator Identity`), both issued by the same test root.
+  (subject `CN=Sigillo Creator Identity`), both issued by the same test root.
   In a real deployment the identity certificate would be issued to the actual
   creator (its subject identifying them) — or you'd use the CAWG *identity claims
   aggregation* flavor backed by a W3C Verifiable Credential. If the identity
@@ -148,12 +148,12 @@ permission). The review screen shows the embedded values, and they round-trip to
 make bootstrap          # == make certs + make project
 
 # 2. Open it
-make open               # or: open C2PACamera.xcodeproj
+make open               # or: open Sigillo.xcodeproj
 ```
 
 Then in Xcode:
 
-1. Select the **C2PACamera** target → **Signing & Capabilities** → choose your
+1. Select the **Sigillo** target → **Signing & Capabilities** → choose your
    Team (or set `DEVELOPMENT_TEAM` in [`project.yml`](project.yml) and re-run
    `make project`).
 2. Pick your iPhone as the run destination and press **▶︎ Run**.
@@ -275,7 +275,7 @@ Makefile                            certs / project / open / clean targets
 scripts/make_test_certs.sh          generates the test ES256 cert + key
 scripts/make_app_icon.py            renders the film-noir app icon (Pillow)
 Sources/
-  C2PACameraApp.swift               @main App entry point
+  SigilloApp.swift                  @main App entry point
   Camera/
     CameraController.swift          AVCaptureSession: stills, video, controls
     CameraControls.swift            control enums (mode/flash/aspect/timer)

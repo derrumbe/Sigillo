@@ -258,7 +258,7 @@ final class ContentCredentialSigner {
             assertions: assertions,
             claimGeneratorInfo: [claimGenerator],
             format: format,
-            title: "C2PA Camera \(Self.timestamp).jpg"
+            title: "Sigillo \(Self.timestamp).jpg"
         )
     }
 

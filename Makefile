@@ -1,8 +1,8 @@
-# Convenience targets for the C2PA Camera app.
+# Convenience targets for the Sigillo app.
 #
 #   make certs     - generate the test ES256 signing certificate + key
 #   make icon      - regenerate the app icon (requires Pillow)
-#   make project   - generate C2PACamera.xcodeproj via XcodeGen
+#   make project   - generate Sigillo.xcodeproj via XcodeGen
 #   make bootstrap  - certs + project (run this first)
 #   make open      - open the generated project in Xcode
 #   make clean     - remove generated project + bundled credentials
@@ -23,11 +23,11 @@ project:
 	@command -v xcodegen >/dev/null 2>&1 || { \
 		echo "XcodeGen not found. Install it with: brew install xcodegen"; exit 1; }
 	@xcodegen generate
-	@echo "Generated C2PACamera.xcodeproj"
+	@echo "Generated Sigillo.xcodeproj"
 
 open:
-	@open C2PACamera.xcodeproj
+	@open Sigillo.xcodeproj
 
 clean:
-	@rm -rf C2PACamera.xcodeproj
+	@rm -rf Sigillo.xcodeproj
 	@rm -f Sources/Resources/es256_certs.pem Sources/Resources/es256_private.key

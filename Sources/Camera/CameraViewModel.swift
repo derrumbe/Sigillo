@@ -231,14 +231,14 @@ final class CameraViewModel: ObservableObject {
 
     private func writeTempFile(_ data: Data, ext: String) throws -> URL {
         let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("C2PA Camera \(Self.fileTimestamp).\(ext)")
+            .appendingPathComponent("Sigillo \(Self.fileTimestamp).\(ext)")
         try data.write(to: url, options: .atomic)
         return url
     }
 
     private func moveToTempFile(_ source: URL, ext: String) throws -> URL {
         let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("C2PA Camera \(Self.fileTimestamp).\(ext)")
+            .appendingPathComponent("Sigillo \(Self.fileTimestamp).\(ext)")
         try? FileManager.default.removeItem(at: url)
         try FileManager.default.moveItem(at: source, to: url)
         return url
