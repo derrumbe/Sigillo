@@ -3,11 +3,12 @@
 #   make certs     - generate the test ES256 signing certificate + key
 #   make icon      - regenerate the app icon (requires Pillow)
 #   make project   - generate Sigillo.xcodeproj via XcodeGen
+#   make bump      - increment the build number, then regenerate the project
 #   make bootstrap  - certs + project (run this first)
 #   make open      - open the generated project in Xcode
 #   make clean     - remove generated project + bundled credentials
 
-.PHONY: bootstrap certs icon project open clean
+.PHONY: bootstrap certs icon project bump open clean
 
 bootstrap: certs project
 
@@ -24,6 +25,10 @@ project:
 		echo "XcodeGen not found. Install it with: brew install xcodegen"; exit 1; }
 	@xcodegen generate
 	@echo "Generated Sigillo.xcodeproj"
+
+bump:
+	@bash scripts/bump_build.sh
+	@$(MAKE) project
 
 open:
 	@open Sigillo.xcodeproj
