@@ -313,4 +313,5 @@ Resolved automatically by Swift Package Manager:
 
 ## License
 
-Sample/demo code. The bundled C2PA SDK is dual-licensed Apache-2.0 / MIT.
+Licensed under the [Apache License 2.0](LICENSE) (SPDX: `Apache-2.0`),
+© 2026 Xebec Studios. The bundled C2PA SDK is dual-licensed Apache-2.0 / MIT.
