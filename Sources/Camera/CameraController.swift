@@ -24,6 +24,9 @@ final class CameraController: NSObject, ObservableObject {
     @Published private(set) var nightModeSupported = false
     @Published private(set) var isRecording = false
 
+    @Published private(set) var cameraPosition: AVCaptureDevice.Position = .back
+    @Published private(set) var canSwitchCamera = false
+
     @Published var zoomFactor: CGFloat = 1.0
     @Published private(set) var minZoomFactor: CGFloat = 1.0
     @Published private(set) var maxZoomFactor: CGFloat = 8.0
@@ -76,7 +79,7 @@ final class CameraController: NSObject, ObservableObject {
         session.beginConfiguration()
         session.sessionPreset = .photo
 
-        guard let device = Self.bestBackCamera(),
+        guard let device = Self.bestCamera(for: .back),
               let input = try? AVCaptureDeviceInput(device: device),
               session.canAddInput(input) else {
             session.commitConfiguration()
@@ -99,14 +102,15 @@ final class CameraController: NSObject, ObservableObject {
         refreshDeviceCapabilities(device)
     }
 
-    private static func bestBackCamera() -> AVCaptureDevice? {
-        let types: [AVCaptureDevice.DeviceType] = [
-            .builtInTripleCamera, .builtInDualWideCamera, .builtInDualCamera, .builtInWideAngleCamera,
-        ]
+    private static func bestCamera(for position: AVCaptureDevice.Position) -> AVCaptureDevice? {
+        let types: [AVCaptureDevice.DeviceType] = position == .front
+            ? [.builtInTrueDepthCamera, .builtInWideAngleCamera]
+            : [.builtInTripleCamera, .builtInDualWideCamera, .builtInDualCamera, .builtInWideAngleCamera]
         for t in types {
-            if let d = AVCaptureDevice.default(t, for: .video, position: .back) { return d }
+            if let d = AVCaptureDevice.default(t, for: .video, position: position) { return d }
         }
-        return AVCaptureDevice.default(for: .video)
+        // Last resort: any available camera (only meaningful for the back case).
+        return position == .back ? AVCaptureDevice.default(for: .video) : nil
     }
 
     private func refreshDeviceCapabilities(_ device: AVCaptureDevice) {
@@ -116,6 +120,7 @@ final class CameraController: NSObject, ObservableObject {
         let maxExp = device.maxExposureTargetBias
         let liveSupported = photoOutput.isLivePhotoCaptureSupported
         let lowLight = device.isLowLightBoostSupported
+        let canSwitch = Self.bestCamera(for: .front) != nil && Self.bestCamera(for: .back) != nil
         Task { @MainActor in
             self.minZoomFactor = minZoom
             self.maxZoomFactor = maxZoom
@@ -123,6 +128,7 @@ final class CameraController: NSObject, ObservableObject {
             self.maxExposureBias = maxExp
             self.isLivePhotoSupported = liveSupported
             self.nightModeSupported = lowLight
+            self.canSwitchCamera = canSwitch
             self.status = .configured
         }
     }
@@ -153,6 +159,40 @@ final class CameraController: NSObject, ObservableObject {
             if session.canSetSessionPreset(.high) { session.sessionPreset = .high }
         }
         session.commitConfiguration()
+    }
+
+    /// Flip between the back and front (selfie) camera. Ignored while recording,
+    /// since swapping the input mid-recording would interrupt the movie.
+    func switchCamera() {
+        guard canSwitchCamera, !isRecording else { return }
+        let target: AVCaptureDevice.Position = cameraPosition == .back ? .front : .back
+        sessionQueue.async { [weak self] in self?.reconfigureCamera(to: target) }
+    }
+
+    private func reconfigureCamera(to position: AVCaptureDevice.Position) {
+        guard let newDevice = Self.bestCamera(for: position),
+              let newInput = try? AVCaptureDeviceInput(device: newDevice) else { return }
+
+        session.beginConfiguration()
+        if let current = videoInput { session.removeInput(current) }
+        if session.canAddInput(newInput) {
+            session.addInput(newInput)
+            videoInput = newInput
+        } else if let current = videoInput {
+            session.addInput(current)            // revert if the new input is rejected
+            session.commitConfiguration()
+            return
+        }
+        session.commitConfiguration()
+
+        Task { @MainActor in
+            self.cameraPosition = position
+            // The new device starts at its own defaults; reset the published
+            // control state so the UI matches what the hardware is doing.
+            self.zoomFactor = 1
+            self.exposureBias = 0
+        }
+        refreshDeviceCapabilities(newDevice)
     }
 
     func setZoom(_ factor: CGFloat) {

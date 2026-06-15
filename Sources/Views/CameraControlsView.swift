@@ -255,6 +255,18 @@ struct CaptureBar: View {
                     }
                     .accessibilityLabel("Credential Roll")
                     Spacer()
+                    if camera.canSwitchCamera {
+                        Button { camera.switchCamera() } label: {
+                            Image(systemName: "arrow.triangle.2.circlepath.camera")
+                                .font(.title2)
+                                .foregroundStyle(.white)
+                                .frame(width: 52, height: 52)
+                                .background(.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+                        }
+                        .accessibilityLabel("Switch camera")
+                        .disabled(camera.isRecording || isBusy)
+                        .opacity(camera.isRecording || isBusy ? 0.3 : 1)
+                    }
                 }
                 .padding(.horizontal, 28)
             }
