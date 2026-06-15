@@ -56,7 +56,8 @@ struct CameraScreen: View {
             CameraTopControls(camera: model.camera, showSettings: $showSettings)
 
             ZStack {
-                CameraPreview(session: model.camera.session)
+                CameraPreview(session: model.camera.session,
+                              onPrimaryCapture: { model.shutter() })
                     .gesture(
                         MagnificationGesture()
                             .onChanged { scale in model.camera.setZoom(pinchBase * scale) }
