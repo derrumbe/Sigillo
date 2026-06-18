@@ -10,21 +10,24 @@ struct RollItemView: View {
 
     @State private var manifestJSON = "{}"
     @State private var showRawJSON = false
+    @AppStorage("showRollCredentials") private var showCredentials = true
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
                     media
-                    CredentialSummaryCard(manifestJSON: manifestJSON)
-                    DisclosureGroup("Raw manifest JSON", isExpanded: $showRawJSON) {
-                        Text(manifestJSON)
-                            .font(.system(.caption2, design: .monospaced))
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .textSelection(.enabled)
-                            .padding(.top, 4)
+                    if showCredentials {
+                        CredentialSummaryCard(manifestJSON: manifestJSON)
+                        DisclosureGroup("Raw manifest JSON", isExpanded: $showRawJSON) {
+                            Text(manifestJSON)
+                                .font(.system(.caption2, design: .monospaced))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .textSelection(.enabled)
+                                .padding(.top, 4)
+                        }
+                        .padding(.horizontal, 4)
                     }
-                    .padding(.horizontal, 4)
                 }
                 .padding()
             }
@@ -33,6 +36,14 @@ struct RollItemView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") { dismiss() }
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        showCredentials.toggle()
+                    } label: {
+                        Label(showCredentials ? "Hide Credentials" : "Show Credentials",
+                              systemImage: showCredentials ? "eye.slash" : "eye")
+                    }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     ShareLink(item: item.url) {
