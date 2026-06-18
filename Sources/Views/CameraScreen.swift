@@ -8,6 +8,7 @@ struct CameraScreen: View {
     @State private var showSettings = false
     @State private var showRoll = false
     @State private var pinchBase: CGFloat = 1
+    @AppStorage("showCredentialBadge") private var showCredentialBadge = true
 
     var body: some View {
         ZStack {
@@ -53,7 +54,8 @@ struct CameraScreen: View {
 
     private var cameraUI: some View {
         VStack(spacing: 0) {
-            CameraTopControls(camera: model.camera, showSettings: $showSettings)
+            CameraTopControls(camera: model.camera, showSettings: $showSettings,
+                              showCredentialBadge: $showCredentialBadge)
 
             ZStack {
                 CameraPreview(session: model.camera.session,
@@ -65,11 +67,17 @@ struct CameraScreen: View {
                     )
 
                 VStack {
-                    Label(badgeText, systemImage: "checkmark.seal.fill")
-                        .font(.caption.weight(.semibold))
-                        .padding(.horizontal, 12).padding(.vertical, 6)
-                        .background(.ultraThinMaterial, in: Capsule())
+                    if showCredentialBadge {
+                        Button { showCredentialBadge = false } label: {
+                            Label(badgeText, systemImage: "checkmark.seal.fill")
+                                .font(.caption.weight(.semibold))
+                                .padding(.horizontal, 12).padding(.vertical, 6)
+                                .background(.ultraThinMaterial, in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityHint("Tap to hide")
                         .padding(.top, 8)
+                    }
                     Spacer()
                     ExposureControl(camera: model.camera)
                         .padding(.bottom, 8)

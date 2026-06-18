@@ -5,9 +5,16 @@ import SwiftUI
 struct CameraTopControls: View {
     @ObservedObject var camera: CameraController
     @Binding var showSettings: Bool
+    @Binding var showCredentialBadge: Bool
 
     var body: some View {
         HStack(spacing: 18) {
+            // Show/hide the Content Credentials badge over the preview.
+            controlButton(systemImage: showCredentialBadge ? "checkmark.seal.fill" : "checkmark.seal",
+                          active: showCredentialBadge) {
+                showCredentialBadge.toggle()
+            }
+
             // Flash: off → auto → on
             controlButton(systemImage: camera.flashOption.icon,
                           active: camera.flashOption != .off) {

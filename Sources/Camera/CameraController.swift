@@ -41,6 +41,12 @@ final class CameraController: NSObject, ObservableObject {
     private var movieOutput: AVCaptureMovieFileOutput?
     private var videoInput: AVCaptureDeviceInput?
 
+    /// `AVCaptureDevice.RotationCoordinator` (iOS 17+), stored type-erased so the
+    /// property doesn't force an availability annotation on the whole class.
+    /// Used to keep captures level with gravity even though the UI is locked to
+    /// portrait; iOS 16 falls back to the physical device orientation.
+    private var rotationCoordinatorBox: Any?
+
     private var photoContinuation: CheckedContinuation<PhotoCaptureResult, Error>?
     private var videoContinuation: CheckedContinuation<URL, Error>?
     private var pendingData: Data?
@@ -52,6 +58,11 @@ final class CameraController: NSObject, ObservableObject {
     func start() {
         Task {
             guard await requestAuthorization() else { status = .unauthorized; return }
+            // iOS 17+ reads orientation from the RotationCoordinator (motion-based);
+            // earlier versions rely on UIDevice orientation notifications.
+            if #unavailable(iOS 17.0) {
+                UIDevice.current.beginGeneratingDeviceOrientationNotifications()
+            }
             sessionQueue.async { [weak self] in
                 self?.configureSession()
                 self?.session.startRunning()
@@ -60,6 +71,9 @@ final class CameraController: NSObject, ObservableObject {
     }
 
     func stop() {
+        if #unavailable(iOS 17.0) {
+            UIDevice.current.endGeneratingDeviceOrientationNotifications()
+        }
         sessionQueue.async { [weak self] in
             guard let self, self.session.isRunning else { return }
             self.session.stopRunning()
@@ -99,7 +113,16 @@ final class CameraController: NSObject, ObservableObject {
         photoOutput.isLivePhotoCaptureEnabled = photoOutput.isLivePhotoCaptureSupported
 
         session.commitConfiguration()
+        makeRotationCoordinator(for: device)
         refreshDeviceCapabilities(device)
+    }
+
+    private func makeRotationCoordinator(for device: AVCaptureDevice) {
+        if #available(iOS 17.0, *) {
+            rotationCoordinatorBox = AVCaptureDevice.RotationCoordinator(
+                device: device, previewLayer: nil
+            )
+        }
     }
 
     private static func bestCamera(for position: AVCaptureDevice.Position) -> AVCaptureDevice? {
@@ -184,6 +207,7 @@ final class CameraController: NSObject, ObservableObject {
             return
         }
         session.commitConfiguration()
+        makeRotationCoordinator(for: newDevice)
 
         Task { @MainActor in
             self.cameraPosition = position
@@ -193,6 +217,34 @@ final class CameraController: NSObject, ObservableObject {
             self.exposureBias = 0
         }
         refreshDeviceCapabilities(newDevice)
+    }
+
+    // MARK: - Capture orientation
+
+    /// Apply the correct rotation to a capture connection so stills/video are
+    /// upright regardless of how the (portrait-locked) UI is oriented.
+    private func applyCaptureRotation(to connection: AVCaptureConnection,
+                                      fallback: AVCaptureVideoOrientation) {
+        if #available(iOS 17.0, *),
+           let coordinator = rotationCoordinatorBox as? AVCaptureDevice.RotationCoordinator {
+            let angle = coordinator.videoRotationAngleForHorizonLevelCapture
+            if connection.isVideoRotationAngleSupported(angle) {
+                connection.videoRotationAngle = angle
+            }
+        } else if connection.isVideoOrientationSupported {
+            connection.videoOrientation = fallback
+        }
+    }
+
+    /// Physical device orientation mapped to capture orientation, used as the
+    /// iOS 16 fallback. Note the deliberate landscape left/right swap.
+    private func currentVideoOrientation() -> AVCaptureVideoOrientation {
+        switch UIDevice.current.orientation {
+        case .landscapeLeft: return .landscapeRight
+        case .landscapeRight: return .landscapeLeft
+        case .portraitUpsideDown: return .portraitUpsideDown
+        default: return .portrait
+        }
     }
 
     func setZoom(_ factor: CGFloat) {
@@ -246,6 +298,7 @@ final class CameraController: NSObject, ObservableObject {
     func capturePhoto() async throws -> PhotoCaptureResult {
         let flash = flashOption.photoFlashMode
         let wantLive = isLivePhotoEnabled && photoOutput.isLivePhotoCaptureEnabled
+        let fallbackOrientation = currentVideoOrientation()
         return try await withCheckedThrowingContinuation { cont in
             self.photoContinuation = cont
             self.pendingData = nil
@@ -253,6 +306,9 @@ final class CameraController: NSObject, ObservableObject {
             self.pendingLiveURL = nil
             sessionQueue.async { [weak self] in
                 guard let self else { return }
+                if let connection = self.photoOutput.connection(with: .video) {
+                    self.applyCaptureRotation(to: connection, fallback: fallbackOrientation)
+                }
                 let settings: AVCapturePhotoSettings
                 if self.photoOutput.availablePhotoCodecTypes.contains(.jpeg) {
                     settings = AVCapturePhotoSettings(format: [AVVideoCodecKey: AVVideoCodecType.jpeg])
@@ -283,8 +339,15 @@ final class CameraController: NSObject, ObservableObject {
                 device.torchMode = torch ? .on : .off
             }
         }
+        let fallbackOrientation = currentVideoOrientation()
         isRecording = true
-        sessionQueue.async { movieOutput.startRecording(to: url, recordingDelegate: self) }
+        sessionQueue.async { [weak self] in
+            guard let self else { return }
+            if let connection = movieOutput.connection(with: .video) {
+                self.applyCaptureRotation(to: connection, fallback: fallbackOrientation)
+            }
+            movieOutput.startRecording(to: url, recordingDelegate: self)
+        }
     }
 
     func stopRecording() async throws -> URL {
