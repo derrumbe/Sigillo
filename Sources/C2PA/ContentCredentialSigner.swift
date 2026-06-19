@@ -173,7 +173,9 @@ final class ContentCredentialSigner {
             parent: parentJPEG, parentTitle: parentTitle, signer: try Signer(info: signerInfo)
         )
 
-        let manifestJSON = (try? readManifest(from: data, format: format)) ?? "{}"
+        // Read the manifest back strictly: if the re-signed asset has no readable
+        // credential, treat the rotation as failed rather than saving a broken file.
+        let manifestJSON = try readManifest(from: data, format: format)
         return Result(signedImageData: data, manifestJSON: manifestJSON, identityBound: identityBound)
     }
 
@@ -252,6 +254,9 @@ final class ContentCredentialSigner {
         defer { try? FileManager.default.removeItem(at: outputURL) }
 
         let builder = try Builder(manifest: manifest)
+        // An edit (vs. a fresh creation) must declare edit intent *and* carry a
+        // parent ingredient; the c2pa core rejects the manifest otherwise.
+        try builder.setIntent(.edit)
         // The original signed photo becomes the parent ingredient, preserving its
         // provenance under the new (rotated) manifest.
         let escapedTitle = parentTitle.replacingOccurrences(of: "\"", with: "\\\"")
