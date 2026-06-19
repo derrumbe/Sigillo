@@ -41,8 +41,8 @@ struct RollItemView: View {
     /// phone is held in landscape (the UI itself stays portrait).
     private var contentRotation: Angle {
         switch orientationObserver.orientation {
-        case .landscapeLeft: return .degrees(90)
-        case .landscapeRight: return .degrees(-90)
+        case .landscapeLeft: return .degrees(-90)
+        case .landscapeRight: return .degrees(90)
         default: return .degrees(0)
         }
     }
