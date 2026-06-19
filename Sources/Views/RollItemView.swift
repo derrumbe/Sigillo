@@ -1,6 +1,5 @@
 import SwiftUI
 import AVKit
-import Combine
 
 /// Full-screen viewer for a stored Credential Roll item: shows the photo/video,
 /// its embedded Content Credentials (read back from the file), and Share/Rotate/
@@ -20,7 +19,7 @@ struct RollItemView: View {
     @State private var manifestJSON = "{}"
     @State private var showRawJSON = false
     @State private var isRotating = false
-    @State private var deviceOrientation: UIDeviceOrientation = .portrait
+    @StateObject private var orientationObserver = DeviceOrientationObserver()
     @AppStorage("showRollCredentials") private var showCredentials = true
 
     init(item: CredentialRollStore.RollItem,
@@ -34,13 +33,14 @@ struct RollItemView: View {
     private var canRotate: Bool { onRotate != nil && current.kind == .photo }
 
     private var isLandscape: Bool {
-        deviceOrientation == .landscapeLeft || deviceOrientation == .landscapeRight
+        orientationObserver.orientation == .landscapeLeft
+            || orientationObserver.orientation == .landscapeRight
     }
 
     /// Counter-rotation applied to the media so it appears upright while the
     /// phone is held in landscape (the UI itself stays portrait).
     private var contentRotation: Angle {
-        switch deviceOrientation {
+        switch orientationObserver.orientation {
         case .landscapeLeft: return .degrees(90)
         case .landscapeRight: return .degrees(-90)
         default: return .degrees(0)
@@ -77,17 +77,8 @@ struct RollItemView: View {
             .task(id: current.url) {
                 manifestJSON = ManifestReader.json(fileURL: current.url, kind: current.kind) ?? "{}"
             }
-            .onAppear {
-                UIDevice.current.beginGeneratingDeviceOrientationNotifications()
-                updateOrientation(UIDevice.current.orientation)
-            }
-            .onDisappear {
-                UIDevice.current.endGeneratingDeviceOrientationNotifications()
-            }
-            .onReceive(NotificationCenter.default.publisher(
-                for: UIDevice.orientationDidChangeNotification)) { _ in
-                updateOrientation(UIDevice.current.orientation)
-            }
+            .onAppear { orientationObserver.start() }
+            .onDisappear { orientationObserver.stop() }
         }
     }
 
@@ -161,11 +152,6 @@ struct RollItemView: View {
     }
 
     // MARK: - Actions
-
-    private func updateOrientation(_ o: UIDeviceOrientation) {
-        guard o == .portrait || o == .landscapeLeft || o == .landscapeRight else { return }
-        withAnimation(.easeInOut(duration: 0.25)) { deviceOrientation = o }
-    }
 
     private func rotate() {
         guard let onRotate, !isRotating else { return }
