@@ -191,6 +191,43 @@ final class CameraViewModel: ObservableObject {
         }
     }
 
+    // MARK: - Roll editing
+
+    /// Rotate a stored photo 90° and re-sign it with a `c2pa.orientation`
+    /// credential that links the original as a parent ingredient. The rotated,
+    /// re-signed asset replaces the original in the roll. Returns the new item.
+    func rotateRollItem(
+        _ item: CredentialRollStore.RollItem, clockwise: Bool = true
+    ) async -> CredentialRollStore.RollItem? {
+        guard item.kind == .photo else { return nil }
+        guard let signer else { errorMessage = signerInitError ?? "Signer unavailable."; return nil }
+        guard let original = try? Data(contentsOf: item.url),
+              let rotated = ImageRotate.rotated90(original, clockwise: clockwise) else {
+            errorMessage = "Could not rotate this photo."
+            return nil
+        }
+        do {
+            let result = try signer.signRotation(
+                rotatedJPEG: rotated,
+                parentJPEG: original,
+                parentTitle: item.url.lastPathComponent,
+                creator: creatorStore.creator,
+                bindIdentity: creatorStore.bindIdentity
+            )
+            let temp = try writeTempFile(result.signedImageData, ext: "jpg")
+            defer { try? FileManager.default.removeItem(at: temp) }
+            guard let new = rollStore.add(from: temp, kind: .photo) else {
+                errorMessage = "Could not save the rotated photo."
+                return nil
+            }
+            rollStore.delete(item)
+            return new
+        } catch {
+            errorMessage = "Could not re-sign the rotated photo: \(error.localizedDescription)"
+            return nil
+        }
+    }
+
     // MARK: - Save to Photos
 
     func saveToLibrary() {

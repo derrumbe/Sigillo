@@ -137,6 +137,46 @@ final class ContentCredentialSigner {
         return Result(signedImageData: data, manifestJSON: manifestJSON, identityBound: identityBound)
     }
 
+    /// Re-signs a rotated photo, recording the edit as a `c2pa.orientation`
+    /// action and linking the *original* signed photo as a parent ingredient.
+    /// This produces a valid, auditable credential chain (captured → rotated)
+    /// rather than the broken signature a bare pixel rotation would leave.
+    ///
+    /// - Parameters:
+    ///   - rotatedJPEG: the rotated image bytes to sign.
+    ///   - parentJPEG: the original signed photo bytes, added as the parent
+    ///     ingredient so its provenance is carried forward.
+    ///   - parentTitle: a human-readable title for the parent ingredient.
+    func signRotation(
+        rotatedJPEG: Data,
+        parentJPEG: Data,
+        parentTitle: String = "Original capture",
+        creator: Creator = .empty,
+        bindIdentity: Bool = false
+    ) throws -> Result {
+        let format = "image/jpeg"
+        let manifest = makeOrientationManifest(format: format, creator: creator)
+        let wantsIdentity = bindIdentity && !creator.normalized.isEmpty
+
+        var identityBound = false
+        var signedData: Data?
+
+        if wantsIdentity, let cawg = try? Signer(settingsTOML: cawgSettingsTOML()) {
+            signedData = try? signRotationOnce(
+                manifest, format: format, rotated: rotatedJPEG,
+                parent: parentJPEG, parentTitle: parentTitle, signer: cawg
+            )
+            identityBound = signedData != nil
+        }
+        let data = try signedData ?? signRotationOnce(
+            manifest, format: format, rotated: rotatedJPEG,
+            parent: parentJPEG, parentTitle: parentTitle, signer: try Signer(info: signerInfo)
+        )
+
+        let manifestJSON = (try? readManifest(from: data, format: format)) ?? "{}"
+        return Result(signedImageData: data, manifestJSON: manifestJSON, identityBound: identityBound)
+    }
+
     /// Signs a recorded video (QuickTime/MOV) the same way, embedding Content
     /// Credentials and (optionally) a CAWG identity. Returns the signed file URL.
     func signVideo(at sourceURL: URL, creator: Creator = .empty, bindIdentity: Bool = false) throws -> VideoResult {
@@ -202,6 +242,32 @@ final class ContentCredentialSigner {
         return outputURL
     }
 
+    /// Signs `rotated` bytes while linking `parent` as the C2PA parent ingredient.
+    private func signRotationOnce(
+        _ manifest: ManifestDefinition, format: String,
+        rotated: Data, parent: Data, parentTitle: String, signer: Signer
+    ) throws -> Data {
+        let outputURL = Self.tempURL(ext: "bin")
+        FileManager.default.createFile(atPath: outputURL.path, contents: nil)
+        defer { try? FileManager.default.removeItem(at: outputURL) }
+
+        let builder = try Builder(manifest: manifest)
+        // The original signed photo becomes the parent ingredient, preserving its
+        // provenance under the new (rotated) manifest.
+        let escapedTitle = parentTitle.replacingOccurrences(of: "\"", with: "\\\"")
+        let ingredientJSON = """
+        {"title": "\(escapedTitle)", "format": "\(format)", "relationship": "parentOf"}
+        """
+        try builder.addIngredient(json: ingredientJSON, format: format, from: try Stream(data: parent))
+        try builder.sign(
+            format: format,
+            source: try Stream(data: rotated),
+            destination: try Stream(writeTo: outputURL),
+            signer: signer
+        )
+        return try Data(contentsOf: outputURL, options: .uncached)
+    }
+
     private static func tempURL(ext: String) -> URL {
         FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent(UUID().uuidString)
@@ -252,6 +318,28 @@ final class ContentCredentialSigner {
         // Capture metadata: EXIF (location, date/time, camera settings, device).
         if let exif, !exif.isEmpty {
             assertions.append(.custom(label: "stds.exif", data: AnyCodable(exif)))
+        }
+
+        return ManifestDefinition(
+            assertions: assertions,
+            claimGeneratorInfo: [claimGenerator],
+            format: format,
+            title: "Sigillo \(Self.timestamp).jpg"
+        )
+    }
+
+    /// Builds the manifest for a rotated photo: a `c2pa.orientation` edit action
+    /// (instead of `c2pa.created`), carrying the creator attribution forward.
+    private func makeOrientationManifest(format: String, creator: Creator) -> ManifestDefinition {
+        let claimGenerator = ClaimGeneratorInfo(
+            operatingSystem: ClaimGeneratorInfo.operatingSystem
+        )
+
+        var assertions: [AssertionDefinition] = [
+            .actions(actions: [Action(action: PredefinedAction.orientation.rawValue)])
+        ]
+        if let creativeWork = Self.creativeWorkData(for: creator) {
+            assertions.append(.creativeWork(data: creativeWork))
         }
 
         return ManifestDefinition(
