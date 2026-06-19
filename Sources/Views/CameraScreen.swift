@@ -37,8 +37,12 @@ struct CameraScreen: View {
             CreatorSettingsView(store: model.creatorStore) { model.enableLocation() }
         }
         .sheet(isPresented: $showRoll) {
-            CredentialRollView(store: model.rollStore,
-                               onRotate: { await model.rotateRollItem($0) })
+            CredentialRollView(
+                store: model.rollStore,
+                onRotate: { item, clockwise in
+                    await model.rotateRollItem(item, clockwise: clockwise)
+                }
+            )
         }
         .alert(
             "Something went wrong",

@@ -10,8 +10,9 @@ import AVKit
 /// rotates the media itself when the phone is turned sideways.
 struct RollItemView: View {
     @ObservedObject var store: CredentialRollStore
-    /// Rotate + re-sign a photo, returning the replacement item.
-    var onRotate: ((CredentialRollStore.RollItem) async -> CredentialRollStore.RollItem?)?
+    /// Rotate + re-sign a photo (clockwise when the flag is true), returning the
+    /// replacement item.
+    var onRotate: ((CredentialRollStore.RollItem, Bool) async -> CredentialRollStore.RollItem?)?
 
     @State private var current: CredentialRollStore.RollItem
     @Environment(\.dismiss) private var dismiss
@@ -24,7 +25,7 @@ struct RollItemView: View {
 
     init(item: CredentialRollStore.RollItem,
          store: CredentialRollStore,
-         onRotate: ((CredentialRollStore.RollItem) async -> CredentialRollStore.RollItem?)? = nil) {
+         onRotate: ((CredentialRollStore.RollItem, Bool) async -> CredentialRollStore.RollItem?)? = nil) {
         self._store = ObservedObject(wrappedValue: store)
         self._current = State(initialValue: item)
         self.onRotate = onRotate
@@ -130,7 +131,14 @@ struct RollItemView: View {
         }
         if canRotate {
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button(action: rotate) {
+                Menu {
+                    Button { rotate(clockwise: false) } label: {
+                        Label("Rotate Left", systemImage: "rotate.left")
+                    }
+                    Button { rotate(clockwise: true) } label: {
+                        Label("Rotate Right", systemImage: "rotate.right")
+                    }
+                } label: {
                     Label("Rotate", systemImage: "rotate.right")
                 }
                 .disabled(isRotating)
@@ -153,11 +161,11 @@ struct RollItemView: View {
 
     // MARK: - Actions
 
-    private func rotate() {
+    private func rotate(clockwise: Bool) {
         guard let onRotate, !isRotating else { return }
         isRotating = true
         Task {
-            if let new = await onRotate(current) { current = new }
+            if let new = await onRotate(current, clockwise) { current = new }
             isRotating = false
         }
     }

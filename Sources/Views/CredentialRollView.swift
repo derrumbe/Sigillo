@@ -4,8 +4,9 @@ import SwiftUI
 /// item to inspect its credentials, share it, or delete it.
 struct CredentialRollView: View {
     @ObservedObject var store: CredentialRollStore
-    /// Rotate + re-sign a stored photo, returning the replacement item.
-    var onRotate: ((CredentialRollStore.RollItem) async -> CredentialRollStore.RollItem?)?
+    /// Rotate + re-sign a stored photo (clockwise when the flag is true),
+    /// returning the replacement item.
+    var onRotate: ((CredentialRollStore.RollItem, Bool) async -> CredentialRollStore.RollItem?)?
     @Environment(\.dismiss) private var dismiss
     @State private var selected: CredentialRollStore.RollItem?
 
