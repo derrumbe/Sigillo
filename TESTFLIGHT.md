@@ -17,9 +17,9 @@ matches, so viewers can tell.
 
 You can review the credential in the app, inspect the raw manifest, and
 optionally attach your name and identity as the creator. Capture works the way
-you'd expect from a camera — photo and video, zoom, flash, exposure, aspect
-ratio, self-timer, Live Photos, and a low-light mode — and the credential rides
-along with everything you shoot.
+you'd expect from a camera — front/back cameras, photo and video, zoom, flash,
+exposure, aspect ratio, self-timer, Live Photos, and a low-light mode — and the
+credential rides along with everything you shoot.
 
 This beta is for testing capture quality, the signing flow, and how well the
 credentials survive being saved and shared. Nothing you capture is uploaded to
@@ -31,6 +31,25 @@ us; signing happens on-device and photos stay in your library.
 
 Thanks for testing Sigillo! Please try the following and report anything that
 looks wrong:
+
+**New in this build — please focus here**
+- **Selfie camera:** tap the flip-camera button (bottom-right of the capture
+  bar) to switch between the back and front camera. Works in Photo and Video.
+- **Camera Control button (iPhone 16 family):** press the hardware Camera
+  Control to take a photo / start-stop recording. The volume buttons also work
+  as a shutter.
+- **Photo orientation:** shoot photos holding the phone in **landscape** and
+  confirm they come out upright (not sideways) in the Credential Roll and when
+  saved to Photos.
+- **Rotate a stored photo:** open a photo in the Credential Roll → **Rotate**
+  menu → **Rotate Left** / **Rotate Right**. The photo is rotated *and re-signed*
+  — confirm it still shows a valid credential afterward (the credential should
+  note the orientation change and link the original).
+- **Landscape viewing:** while viewing a photo in the Credential Roll, turn the
+  phone sideways — a landscape photo should rotate to fill the screen. Turn back
+  to portrait to get the controls again.
+- **Hide/show credentials:** use the eye button in the roll viewer (and the seal
+  button on the camera) to hide or show the Content Credentials display.
 
 **Capture the basics**
 - Take a few photos and a video. Confirm each one saves to your photo library.
